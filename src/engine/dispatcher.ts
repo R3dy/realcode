@@ -3,7 +3,7 @@ import { findStageForStatus, applyTransition } from "./stage-graph.js";
 import type { Queue, Storage, WorkItem } from "../backend/types.js";
 
 export interface ControlDoc {
-  run_mode: "continuous" | "step" | "paused";
+  run_mode: "continuous" | "step" | "paused" | "paused_cost_cap";
   concurrency: number;
   per_stage_model_overrides: Record<string, string>;
   cost_cap_usd: number;

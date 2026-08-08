@@ -31,4 +31,5 @@ export interface Storage {
   list(prefix: string): string[];
   delete(path: string): void;
   exists(path: string): boolean;
+  mkdirSync?(path: string): void;
 }
