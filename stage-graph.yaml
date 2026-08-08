@@ -1,0 +1,107 @@
+# stage-graph.yaml -- the declarative graph the realcode engine loads at startup.
+# Adding/reordering/branching a stage = edit this file, never engine code (ADR-002).
+# Each stage delegates to an anymake phase + anymake's registered agents (ADR-001).
+version: 1
+cost_cap_usd_per_run: 8.0
+retry_ceilings:
+  per_stage_revision: 2
+  per_story_build: 3
+  per_stage_escalation: 5
+stages:
+  - id: frame
+    anymake_phase: 0
+    anymake_agents: [anymake-product-owner-proxy]
+    input_states: [intake]
+    output_states: [framed, framing_failed]
+    transitions:
+      - { from: intake, on: pass, to: framed }
+      - { from: intake, on: needs_changes, to: intake, count_toward: revision }
+      - { from: intake, on: ceiling, to: framing_failed }
+    concurrency: 1
+    soft_budget_tokens: 50000
+    model_tier: 1
+    permission_mode: unattended
+    artifact_schema: schemas/frame.schema.json
+    agent_spec: agent-specs/frame.yaml
+  - id: discover
+    anymake_phase: 1
+    anymake_agents: []
+    input_states: [framed]
+    output_states: [discovered, discovery_failed]
+    transitions:
+      - { from: framed, on: pass, to: discovered }
+      - { from: framed, on: needs_changes, to: framed, count_toward: revision }
+      - { from: framed, on: reframe, to: intake, count_toward: loopback }
+      - { from: framed, on: ceiling, to: discovery_failed }
+    concurrency: 1
+    soft_budget_tokens: 60000
+    model_tier: 2
+    permission_mode: unattended
+    artifact_schema: schemas/discover.schema.json
+    agent_spec: agent-specs/discover.yaml
+  - id: plan
+    anymake_phase: 2
+    anymake_agents: [anymake-design-system]
+    input_states: [discovered]
+    output_states: [planned, plan_failed]
+    transitions:
+      - { from: discovered, on: pass, to: planned }
+      - { from: discovered, on: needs_changes, to: discovered, count_toward: revision }
+      - { from: discovered, on: rediscover, to: framed, count_toward: loopback }
+      - { from: discovered, on: ceiling, to: plan_failed }
+    concurrency: 1
+    soft_budget_tokens: 150000
+    model_tier: 1
+    permission_mode: unattended
+    artifact_schema: schemas/plan.schema.json
+    agent_spec: agent-specs/plan.yaml
+  - id: spec
+    anymake_phase: 3
+    anymake_agents: []
+    input_states: [planned]
+    output_states: [specified, spec_failed]
+    transitions:
+      - { from: planned, on: pass, to: specified }
+      - { from: planned, on: needs_changes, to: planned, count_toward: revision }
+      - { from: planned, on: replan, to: discovered, count_toward: loopback }
+      - { from: planned, on: ceiling, to: spec_failed }
+    concurrency: 1
+    soft_budget_tokens: 120000
+    model_tier: 2
+    permission_mode: unattended
+    artifact_schema: schemas/spec.schema.json
+    agent_spec: agent-specs/spec.yaml
+  - id: build
+    anymake_phase: 4
+    anymake_agents: [anymake-orchestrator, anymake-planner, anymake-worker, anymake-validator, anymake-product-owner-proxy]
+    inner_loop: anymake-build-loop
+    input_states: [specified]
+    output_states: [built, build_failed, escalated]
+    transitions:
+      - { from: specified, on: pass, to: built }
+      - { from: specified, on: needs_changes, to: specified, count_toward: revision }
+      - { from: specified, on: respec, to: planned, count_toward: loopback }
+      - { from: specified, on: ceiling, to: build_failed }
+      - { from: specified, on: escalate, to: escalated }
+    concurrency: 1
+    soft_budget_tokens: 2500000
+    model_tier: 3
+    permission_mode: unattended
+    artifact_schema: schemas/build.schema.json
+    agent_spec: agent-specs/build.yaml
+  - id: ship
+    anymake_phase: 5
+    anymake_agents: [anymake-deploy]
+    input_states: [built]
+    output_states: [shipped, ship_failed]
+    transitions:
+      - { from: built, on: pass, to: shipped }
+      - { from: built, on: needs_changes, to: built, count_toward: revision }
+      - { from: built, on: rebuild, to: specified, count_toward: loopback }
+      - { from: built, on: ceiling, to: ship_failed }
+    concurrency: 1
+    soft_budget_tokens: 80000
+    model_tier: 2
+    permission_mode: unattended_with_approval_on_deploy
+    artifact_schema: schemas/ship.schema.json
+    agent_spec: agent-specs/ship.yaml
