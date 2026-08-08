@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0b12;
+  --foreground: #e6e8f2;
+}
+
+html { color-scheme: dark; }
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124, 92, 255, 0.10), transparent 70%),
+    radial-gradient(circle, #1c2032 1px, transparent 1px);
+  background-size: 100% 100%, 22px 22px;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #272b3d; border-radius: 8px; border: 2px solid #0a0b12; }
+::-webkit-scrollbar-thumb:hover { background: #3a3f56; }
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  animation: shimmer 1.6s infinite;
+}
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+
+*:focus-visible {
+  outline: 2px solid #7c5cff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
