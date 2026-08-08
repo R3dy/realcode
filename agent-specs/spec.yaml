@@ -1,0 +1,15 @@
+# agent-specs/spec.yaml -- AgentSpec for the spec stage (ADR-001 + pipeline-design.md section 2)
+# Delegates to anymake Phase 3
+# Full spec in docs/02-planning/pipeline-design.md section 2 -- this file is the runtime config the engine reads.
+stage: spec
+anymake_phase: 3
+system_prompt: |
+  You are executing anymake Phase 3 (spec).
+  Read the anymake phase guide + templates. Produce the canonical artifact for this stage.
+user_prompt_template: "Prior artifact: {prior_artifact}. Produce the spec stage artifact."
+tool_allowlist:
+  - Read
+  - Write
+  - Bash
+model_tier: 2
+permission_mode: unattended

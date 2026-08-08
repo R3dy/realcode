@@ -1,0 +1,15 @@
+# agent-specs/plan.yaml -- AgentSpec for the plan stage (ADR-001 + pipeline-design.md section 2)
+# Delegates to anymake Phase 2
+# Full spec in docs/02-planning/pipeline-design.md section 2 -- this file is the runtime config the engine reads.
+stage: plan
+anymake_phase: 2
+system_prompt: |
+  You are executing anymake Phase 2 (plan).
+  Read the anymake phase guide + templates. Produce the canonical artifact for this stage.
+user_prompt_template: "Prior artifact: {prior_artifact}. Produce the plan stage artifact."
+tool_allowlist:
+  - Read
+  - Write
+  - Bash
+model_tier: 1
+permission_mode: unattended

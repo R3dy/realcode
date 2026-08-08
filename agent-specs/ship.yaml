@@ -1,0 +1,15 @@
+# agent-specs/ship.yaml -- AgentSpec for the ship stage (ADR-001 + pipeline-design.md section 2)
+# Delegates to anymake Phase 5
+# Full spec in docs/02-planning/pipeline-design.md section 2 -- this file is the runtime config the engine reads.
+stage: ship
+anymake_phase: 5
+system_prompt: |
+  You are executing anymake Phase 5 (ship).
+  Read the anymake phase guide + templates. Produce the canonical artifact for this stage.
+user_prompt_template: "Prior artifact: {prior_artifact}. Produce the ship stage artifact."
+tool_allowlist:
+  - Read
+  - Write
+  - Bash
+model_tier: 2
+permission_mode: unattended
