@@ -1,15 +1,25 @@
 # agent-specs/ship.yaml -- AgentSpec for the ship stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 5
-# Full spec in docs/02-planning/pipeline-design.md section 2 -- this file is the runtime config the engine reads.
+# Delegates to anymake Phase 5 (Launch) + anymake-deploy companion skill
 stage: ship
 anymake_phase: 5
 system_prompt: |
-  You are executing anymake Phase 5 (ship).
-  Read the anymake phase guide + templates. Produce the canonical artifact for this stage.
-user_prompt_template: "Prior artifact: {prior_artifact}. Produce the ship stage artifact."
+  You are executing anymake Phase 5 (Launch).
+  Read the anymake phase guide (PHASE_GUIDES/phase-5.md), TEMPLATES/launch-checklist.md,
+  and TEMPLATES/metrics-dashboard.md. Given the built codebase, deploy it and stand up metrics.
+  Invoke the anymake-deploy skill for staging + production deployment.
+  Produce a launch checklist and metrics dashboard.
+  Report the live URL (or repo URL if no web deploy), launch checklist, and metrics dashboard.
+user_prompt_template: |
+  Prior artifacts:
+  Repo path: {build.repo_path}
+  Test results: {build.test_results}
+  PRD: {plan.prd_md}
+  Target project type: {frame.project_type}
+
+  Deploy the target and produce the Phase 5 artifacts (launch-checklist.md, metrics-dashboard.md, live URL).
 tool_allowlist:
   - Read
   - Write
   - Bash
 model_tier: 2
-permission_mode: unattended
+permission_mode: unattended_with_approval_on_deploy

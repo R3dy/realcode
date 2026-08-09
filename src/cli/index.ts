@@ -5,7 +5,7 @@ import * as fs from "fs";
 import { loadStageGraph, Engine } from "../engine/index.js";
 import { SQLiteQueue, FileStorage } from "../backend/index.js";
 import { SandboxRunner } from "../sandbox/index.js";
-import type { StageEntry } from "../engine/index.js";
+import { AgentStageRunner } from "../agents/index.js";
 import type { WorkItem } from "../backend/types.js";
 
 const program = new Command();
@@ -26,31 +26,10 @@ function getEngine(dataDir?: string, graphPath?: string) {
   const queue = new SQLiteQueue(path.join(dir, "queue.db"));
   const storage = new FileStorage(dir);
   const sandbox = new SandboxRunner();
-
-  const runner = {
-    async run(item: WorkItem, stage: StageEntry, workspacePath: string) {
-      const model = process.env.ANYMAKE_MODEL_TIER1 ?? "openrouter/z-ai/glm-5.2";
-      const result = await sandbox.run({
-        workspacePath,
-        model,
-        dispatchMessage: `You are executing anymake Phase ${stage.anymake_phase} (${stage.id}). Read the anymake phase guide + templates. Prior artifact: ${JSON.stringify(item.payload)}. Produce the ${stage.id} stage artifact.`,
-        localMode: true,
-        timeoutMs: 300000,
-      });
-
-      if (result.timedOut || result.exitCode !== 0) {
-        throw new Error(`Stage ${stage.id} failed: exit ${result.exitCode}, timedOut ${result.timedOut}`);
-      }
-
-      const tokenUsage = SandboxRunner.extractTokenUsage(result.jsonEvents ?? []);
-      return {
-        output_status: "pass",
-        artifact: { raw_output: result.stdout.slice(-500) },
-        token_usage: tokenUsage,
-        trace_id: item.run_id,
-      };
-    },
-  };
+  const runner = new AgentStageRunner(sandbox, storage, stageGraph, {
+    localMode: true,
+    repoRoot: process.cwd(),
+  });
 
   return { engine: new Engine(stageGraph, queue, storage, runner, dir), stageGraph, queue, storage };
 }

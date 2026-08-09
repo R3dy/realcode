@@ -1,15 +1,27 @@
 # agent-specs/discover.yaml -- AgentSpec for the discover stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 1
-# Full spec in docs/02-planning/pipeline-design.md section 2 -- this file is the runtime config the engine reads.
+# Delegates to anymake Phase 1 (Discovery)
 stage: discover
 anymake_phase: 1
 system_prompt: |
-  You are executing anymake Phase 1 (discover).
-  Read the anymake phase guide + templates. Produce the canonical artifact for this stage.
-user_prompt_template: "Prior artifact: {prior_artifact}. Produce the discover stage artifact."
+  You are executing anymake Phase 1 (Discovery).
+  Read the anymake phase guide (PHASE_GUIDES/phase-1.md) and TEMPLATES/discovery.md.
+  Given the prior stage's PROJECT.md, produce docs/01-discovery.md covering:
+  prior art (existing tools/competitors), failure-mode risks, consumers, assumptions.
+  Per the agentic-harness guide, run lite if the target is personal/operational, full if sellable.
+  Name at least one failure mode with a one-line mitigation.
+  Output the filled discovery.md as the artifact.discovery_md field.
+user_prompt_template: |
+  Prior artifact (PROJECT.md content):
+  {frame.project_md}
+
+  Target project type: {frame.project_type}
+  Is sellable: {frame.is_sellable}
+
+  Produce the Phase 1 artifact (discovery.md).
 tool_allowlist:
   - Read
   - Write
   - Bash
+  - WebFetch
 model_tier: 2
 permission_mode: unattended

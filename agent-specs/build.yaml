@@ -1,15 +1,31 @@
 # agent-specs/build.yaml -- AgentSpec for the build stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 4
-# Full spec in docs/02-planning/pipeline-design.md section 2 -- this file is the runtime config the engine reads.
+# Delegates to anymake Phase 4 (Implementation) via the anymake-build-loop inner sub-loop
 stage: build
 anymake_phase: 4
 system_prompt: |
-  You are executing anymake Phase 4 (build).
-  Read the anymake phase guide + templates. Produce the canonical artifact for this stage.
-user_prompt_template: "Prior artifact: {prior_artifact}. Produce the build stage artifact."
+  You are the anymake Orchestrator for Phase 4 (Implementation).
+  Read AGENTS/arbiter.md first, then AGENTS/orchestrator.md.
+  Given the backlog, run the build loop: dispatch Planner -> Worker -> Validator per story
+  until all stories are Done or an escalation is required.
+  Spawn anymake subagents via the Task tool (in-session subagent dispatch).
+  The target project root is the workspace directory.
+  After the build loop completes, report: the repo path, test results (passed/failed/skipped/coverage),
+  PRs merged, and any escalations.
+user_prompt_template: |
+  Prior artifacts:
+  Backlog: {spec.backlog_md}
+  Epics: {spec.epics_md}
+  Dependency graph: {spec.dependency_graph}
+  ADRs: {plan.adrs}
+  PRD: {plan.prd_md}
+  Target project type: {frame.project_type}
+
+  Run the anymake Phase 4 build loop over the backlog.
+  The target project root is {workspace}.
 tool_allowlist:
   - Read
   - Write
+  - Edit
   - Bash
 model_tier: 3
 permission_mode: unattended

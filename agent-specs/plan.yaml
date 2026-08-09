@@ -1,15 +1,28 @@
 # agent-specs/plan.yaml -- AgentSpec for the plan stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 2
-# Full spec in docs/02-planning/pipeline-design.md section 2 -- this file is the runtime config the engine reads.
+# Delegates to anymake Phase 2 (Planning)
 stage: plan
 anymake_phase: 2
 system_prompt: |
-  You are executing anymake Phase 2 (plan).
-  Read the anymake phase guide + templates. Produce the canonical artifact for this stage.
-user_prompt_template: "Prior artifact: {prior_artifact}. Produce the plan stage artifact."
+  You are executing anymake Phase 2 (Planning).
+  Read the anymake phase guide (PHASE_GUIDES/phase-2.md), TEMPLATES/prd.md, TEMPLATES/adr.md,
+  and TEMPLATES/ux-design.md. Given the prior stage's discovery.md, produce the Phase 2 artifacts:
+  a PRD (prd.md) and at least one ADR. If the target has a UI, also produce ux-design.md.
+  The target's project type (from PROJECT.md) governs which sub-tracks run (UI/prototype/monetization).
+  Each ADR must have an id, title, and status (Proposed or Accepted).
+  Output the prd.md as artifact.prd_md, ADRs as artifact.adrs[], and ux-design.md as artifact.ux_design_md (if UI-active).
+user_prompt_template: |
+  Prior artifacts:
+  Discovery doc: {discover.discovery_md}
+  PROJECT.md: {frame.project_md}
+  Target project type: {frame.project_type}
+  Has UI: {frame.has_ui}
+
+  Produce the Phase 2 artifacts (prd.md, ADRs, ux-design.md if UI-active).
 tool_allowlist:
   - Read
   - Write
+  - Edit
   - Bash
+  - WebFetch
 model_tier: 1
 permission_mode: unattended

@@ -1,12 +1,22 @@
 # agent-specs/frame.yaml -- AgentSpec for the frame stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 0
-# Full spec in docs/02-planning/pipeline-design.md section 2 -- this file is the runtime config the engine reads.
+# Delegates to anymake Phase 0 (Foundation)
 stage: frame
 anymake_phase: 0
 system_prompt: |
-  You are executing anymake Phase 0 (frame).
-  Read the anymake phase guide + templates. Produce the canonical artifact for this stage.
-user_prompt_template: "Prior artifact: {prior_artifact}. Produce the frame stage artifact."
+  You are executing anymake Phase 0 (Foundation).
+  Read the anymake phase guide (PHASE_GUIDES/phase-0.md) and TEMPLATES/project.md.
+  Given the user's raw idea, draft PROJECT.md capturing identity, scope, success model,
+  and autonomy framing per the phase-0 guide. Do not ask for more input -- make a
+  recommendation and fill the template.
+  Infer the project_type from the idea (defaulting to "saas" if unclear).
+  Set has_ui based on whether the product has user-facing screens.
+  Set is_sellable based on whether it's a commercial product.
+  Output the filled PROJECT.md as the artifact.project_md field.
+user_prompt_template: |
+  Idea: {idea}
+  Workspace path: {workspace}
+  Produce the Phase 0 artifact (PROJECT.md).
+  Infer the project_type from the idea. Default to "saas" if unclear.
 tool_allowlist:
   - Read
   - Write

@@ -1,12 +1,23 @@
 # agent-specs/spec.yaml -- AgentSpec for the spec stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 3
-# Full spec in docs/02-planning/pipeline-design.md section 2 -- this file is the runtime config the engine reads.
+# Delegates to anymake Phase 3 (Solutioning)
 stage: spec
 anymake_phase: 3
 system_prompt: |
-  You are executing anymake Phase 3 (spec).
-  Read the anymake phase guide + templates. Produce the canonical artifact for this stage.
-user_prompt_template: "Prior artifact: {prior_artifact}. Produce the spec stage artifact."
+  You are executing anymake Phase 3 (Solutioning).
+  Read the anymake phase guide (PHASE_GUIDES/phase-3.md), TEMPLATES/epic.md, TEMPLATES/story.md.
+  Given the prior stage's prd.md + ADRs, produce an ordered backlog of stories with acceptance criteria,
+  sliced by the target project type's manifest build order.
+  Produce: epics.md (artifact.epics_md), an ordered backlog.md (artifact.backlog_md),
+  a dependency graph as text (artifact.dependency_graph), and count the stories (artifact.story_count).
+  Every story must have acceptance criteria. The dependency graph must be acyclic.
+user_prompt_template: |
+  Prior artifacts:
+  PRD: {plan.prd_md}
+  ADRs: {plan.adrs}
+  UX design (if any): {plan.ux_design_md}
+  Target project type: {frame.project_type}
+
+  Produce the Phase 3 artifacts (epics.md, backlog.md, dependency graph, story count).
 tool_allowlist:
   - Read
   - Write

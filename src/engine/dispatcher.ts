@@ -169,8 +169,13 @@ export class Engine {
           }, null, 2),
         );
 
-        // Apply the transition
-        const newStatus = applyTransition(this.graph, stage.id, result.output_status, "pass") ?? result.output_status;
+        // Apply the transition: item.status is the `from` state, result.output_status is the gate verdict (the `on` event)
+        let newStatus = applyTransition(this.graph, stage.id, item.status, result.output_status);
+        if (!newStatus) {
+          // No matching transition for this gate verdict in this stage — route to the stage's failure terminal
+          const failedState = stage.output_states.find((s) => s.endsWith("_failed"));
+          newStatus = failedState ?? result.output_status;
+        }
         this.queue.release(item.id, newStatus);
         this.setRunStatus(run, newStatus);
         dispatched++;
