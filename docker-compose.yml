@@ -1,0 +1,76 @@
+# docker-compose.yml -- realcode dev deployment (ADR-003 + ADR-006)
+# Three services: engine (long-running dispatch loop), dashboard (Next.js),
+# and Phoenix (OTel collector for traces).
+#
+# Usage:
+#   docker compose up -d              # start all services
+#   docker compose logs -f engine    # watch engine logs
+#   docker compose down              # stop
+#
+# The dev backend uses SQLite (file-based) + FileStorage (filesystem).
+# Data persists in the mounted ./data volume.
+
+services:
+  engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: realcode-engine
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - ANYMAKE_MODEL_TIER1=${ANYMAKE_MODEL_TIER1:-openrouter/z-ai/glm-5.2}
+      - ANYMAKE_MODEL_TIER2=${ANYMAKE_MODEL_TIER2:-openrouter/z-ai/glm-5.2}
+      - ANYMAKE_MODEL_TIER3=${ANYMAKE_MODEL_TIER3:-openrouter/z-ai/glm-5.2}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces
+      - OTEL_SERVICE_NAME=realcode-engine
+      - REALCODE_DATA_DIR=/data
+      - REALCODE_GRAPH=/app/stage-graph.yaml
+      - REALCODE_DISPATCH_INTERVAL_MS=${REALCODE_DISPATCH_INTERVAL_MS:-5000}
+    volumes:
+      - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      phoenix:
+        condition: service_started
+    networks:
+      - realcode-net
+    command: ["node", "dist/engine-loop.js"]
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: realcode-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REALCODE_DATA_DIR=/data
+      - REALCODE_GRAPH=/app/stage-graph.yaml
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces
+    volumes:
+      - ./data:/data
+    depends_on:
+      - engine
+    networks:
+      - realcode-net
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: realcode-phoenix
+    restart: unless-stopped
+    ports:
+      - "6006:6006"
+    volumes:
+      - phoenix-data:/data
+    networks:
+      - realcode-net
+
+volumes:
+  phoenix-data:
+
+networks:
+  realcode-net:
+    driver: bridge

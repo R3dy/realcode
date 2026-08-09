@@ -1,0 +1,17 @@
+# Dockerfile.dashboard -- realcode dashboard (Next.js)
+FROM node:20-slim
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY src/dashboard/ ./src/dashboard/
+COPY next.config.mjs tailwind.config.js postcss.config.mjs ./
+
+RUN cd src/dashboard && npx next build
+
+ENV PORT=3000
+EXPOSE 3000
+
+CMD ["npx", "next", "start", "--dir", "src/dashboard", "-p", "3000"]

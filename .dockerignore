@@ -1,0 +1,8 @@
+node_modules
+dist
+.realcode-data
+data
+.git
+*.md
+docs
+tests
