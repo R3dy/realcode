@@ -115,7 +115,7 @@ export class Engine {
 
   async dispatchCycle(): Promise<number> {
     const control = this.getControlDoc();
-    if (control.run_mode === "paused") return 0;
+    if (control.run_mode === "paused" || control.run_mode === "paused_cost_cap") return 0;
 
     // Expire stale leases
     this.queue.expire_leases();

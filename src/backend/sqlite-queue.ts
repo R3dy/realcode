@@ -54,11 +54,14 @@ export class SQLiteQueue implements Queue {
 
       if (!row) return null;
 
+      // Set the lease; do NOT change the status — the dispatcher needs the original status
+      // (e.g. "intake") to find the correct stage via findStageForStatus. The lease
+      // (worker_id + lease_expires_at) is what prevents double-claiming, not a status change.
       this.db.prepare(
-        `UPDATE work_items SET worker_id = ?, lease_expires_at = ?, status = 'claimed', updated_at = ? WHERE id = ?`,
+        `UPDATE work_items SET worker_id = ?, lease_expires_at = ?, updated_at = ? WHERE id = ?`,
       ).run(worker_id, now + lease_ms, now, row.id as string);
 
-      return this.mapRow({ ...row, worker_id, lease_expires_at: now + lease_ms, status: "claimed", updated_at: now });
+      return this.mapRow({ ...row, worker_id, lease_expires_at: now + lease_ms, updated_at: now });
     });
     return tx();
   }
@@ -93,19 +96,18 @@ export class SQLiteQueue implements Queue {
   expire_leases(): number {
     const now = Date.now();
     const expired = this.db.prepare(
-      `SELECT id, retry_count FROM work_items WHERE lease_expires_at IS NOT NULL AND lease_expires_at < ? AND status = 'claimed'`,
+      `SELECT id, retry_count FROM work_items WHERE lease_expires_at IS NOT NULL AND lease_expires_at < ? AND worker_id IS NOT NULL`,
     ).all(now) as { id: string; retry_count: number }[];
 
     const update = this.db.prepare(
-      `UPDATE work_items SET status = CASE WHEN retry_count >= 2 THEN 'escalated' ELSE ? END,
+      `UPDATE work_items SET status = CASE WHEN retry_count >= 2 THEN 'escalated' ELSE status END,
        worker_id = NULL, lease_expires_at = NULL, retry_count = retry_count + 1, updated_at = ? WHERE id = ?`,
     );
 
     const tx = this.db.transaction(() => {
       let count = 0;
       for (const e of expired) {
-        const newStatus = e.retry_count >= 2 ? "escalated" : "eligible";
-        update.run(newStatus, now, e.id);
+        update.run(now, e.id);
         count++;
       }
       return count;
