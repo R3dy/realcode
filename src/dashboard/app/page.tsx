@@ -4,8 +4,9 @@ import { motion } from "framer-motion";
 import { Terminal, Search } from "lucide-react";
 import { StatStrip } from "@/components/StatStrip";
 import { RunCard } from "@/components/RunCard";
-import { runs as ALL_RUNS, type RunStatus } from "@/lib/data";
-import { cn } from "@/components/ui";
+import { Skeleton } from "@/components/ui";
+import { type RunStatus } from "@/lib/data";
+import { usePoll, mapRunRecord, type RunRecord } from "@/lib/api";
 
 type Filter = "all" | "running" | "paused" | "escalated" | "shipped";
 
@@ -27,11 +28,14 @@ const GROUPS: { id: Filter; label: string; match: (s: RunStatus) => boolean }[] 
 export default function BoardPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
+  const { data, loading, error } = usePoll<{ runs: RunRecord[] }>("/api/runs");
 
-  const filtered = ALL_RUNS.filter((r) => {
+  const runs = (data?.runs ?? []).map(mapRunRecord);
+
+  const filtered = runs.filter((r) => {
     if (q && !r.idea.toLowerCase().includes(q.toLowerCase()) && !r.id.includes(q)) return false;
     if (filter === "all") return true;
-    return GROUPS.find((g) => g.id === filter)?.match(r.status);
+    return GROUPS.find((g) => g.id === filter)?.match(r.status) ?? false;
   });
 
   return (
@@ -49,10 +53,9 @@ export default function BoardPage() {
             <button
               key={f.id}
               onClick={() => setFilter(f.id)}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                filter === f.id ? "bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30" : "text-ink-500 hover:bg-ink-800 hover:text-ink-100",
-              )}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                filter === f.id ? "bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30" : "text-ink-500 hover:bg-ink-800 hover:text-ink-100"
+              }`}
             >
               {f.label}
             </button>
@@ -69,7 +72,17 @@ export default function BoardPage() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {error ? (
+        <div className="rounded-xl border border-status-fail/30 bg-status-fail/5 px-4 py-3 text-sm text-status-fail">
+          Failed to load runs: {error.message}
+        </div>
+      ) : loading ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState />
       ) : filter === "all" ? (
         <div className="space-y-7">
@@ -113,7 +126,7 @@ function EmptyState() {
       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-500/10 text-brand-300">
         <Terminal className="h-6 w-6" />
       </div>
-      <h3 className="font-display text-lg font-semibold text-ink-100">No runs match</h3>
+      <h3 className="font-display text-lg font-semibold text-ink-100">No runs yet</h3>
       <p className="mt-1 max-w-sm text-sm text-ink-500">
         Start a run from the command line or the <span className="text-ink-300">New run</span> button.
       </p>

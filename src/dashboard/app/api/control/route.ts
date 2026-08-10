@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getEngine } from "@/dashboard/lib/engine";
+import { getEngine } from "@/lib/engine";
 
 export const dynamic = "force-dynamic";
 

@@ -2,7 +2,8 @@
 import { motion } from "framer-motion";
 import { Activity, DollarSign, Package, Gauge, TriangleAlert } from "lucide-react";
 import { Skeleton } from "@/components/ui";
-import { fmtCost, stats } from "@/lib/data";
+import { fmtCost } from "@/lib/data";
+import { usePoll, type Stats } from "@/lib/api";
 
 function Stat({
   label,
@@ -42,7 +43,9 @@ function Stat({
   );
 }
 
-export function StatStrip({ loading }: { loading?: boolean }) {
+export function StatStrip() {
+  const { data, loading } = usePoll<Stats>("/api/stats");
+
   if (loading) {
     return (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -52,11 +55,14 @@ export function StatStrip({ loading }: { loading?: boolean }) {
       </div>
     );
   }
+
+  const s = data ?? { activeRuns: 0, todaySpend: 0, shippedToday: 0, avgCost: 0, escalations: 0 };
+
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Stat
         label="Active runs"
-        value={String(stats.activeRuns)}
+        value={String(s.activeRuns)}
         sub="dispatching now"
         icon={<Activity className="h-4 w-4" />}
         accent
@@ -64,22 +70,22 @@ export function StatStrip({ loading }: { loading?: boolean }) {
       />
       <Stat
         label="Today's spend"
-        value={fmtCost(stats.todaySpend)}
+        value={fmtCost(s.todaySpend)}
         sub={`cap $8.00 / run`}
         icon={<DollarSign className="h-4 w-4" />}
         delay={0.05}
       />
       <Stat
         label="Shipped today"
-        value={String(stats.shippedToday)}
+        value={String(s.shippedToday)}
         sub="zero human edits"
         icon={<Package className="h-4 w-4" />}
         delay={0.1}
       />
       <Stat
         label="Avg cost / run"
-        value={fmtCost(stats.avgCostPerRun)}
-        sub={stats.escalations ? `${stats.escalations} escalation${stats.escalations > 1 ? "s" : ""}` : "no escalations"}
+        value={fmtCost(s.avgCost)}
+        sub={s.escalations ? `${s.escalations} escalation${s.escalations > 1 ? "s" : ""}` : "no escalations"}
         icon={<Gauge className="h-4 w-4" />}
         delay={0.15}
       />

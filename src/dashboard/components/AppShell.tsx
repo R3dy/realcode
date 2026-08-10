@@ -1,20 +1,28 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, ListTree, Settings, Plus, SlidersHorizontal, X, Terminal, Play, Pause, StepForward } from "lucide-react";
+import { Activity, ListTree, Settings, Plus, SlidersHorizontal, X, Terminal, Play } from "lucide-react";
 import { Button, cn } from "@/components/ui";
 import { RunControls } from "@/components/RunControls";
+import { usePoll, type ControlDoc } from "@/lib/api";
 
 const NAV = [
   { label: "Runs", icon: Activity, href: "/" },
-  { label: "Traces", icon: ListTree, href: "/runs/run_2k9f3a" },
+  { label: "Traces", icon: ListTree, href: "/traces" },
   { label: "Settings", icon: Settings, href: "/settings" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [controlsOpen, setControlsOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  const { data } = usePoll<ControlDoc>("/api/control");
   const [mode, setMode] = useState<"continuous" | "step" | "paused">("continuous");
+
+  useEffect(() => {
+    if (data) {
+      setMode(data.run_mode === "paused_cost_cap" ? "paused" : data.run_mode);
+    }
+  }, [data]);
 
   const modeTone =
     mode === "continuous" ? "text-brand-300 bg-brand-500/10 border-brand-500/30" : mode === "step" ? "text-status-run bg-status-run/10 border-status-run/30" : "text-status-pause bg-status-pause/10 border-status-pause/30";
@@ -68,7 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </Sheet>
 
       <Sheet open={newOpen} onClose={() => setNewOpen(false)} title="Start a run" subtitle="a raw idea enters the pipeline at frame">
-        <NewRunSheet />
+        <NewRunSheet onClose={() => setNewOpen(false)} />
       </Sheet>
     </div>
   );
@@ -123,8 +131,28 @@ function Sheet({
   );
 }
 
-function NewRunSheet() {
+function NewRunSheet({ onClose }: { onClose: () => void }) {
   const [idea, setIdea] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ runId?: string; error?: string } | null>(null);
+
+  async function startRun() {
+    if (!idea.trim()) return;
+    setSubmitting(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idea }) });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = await res.json();
+      setResult({ runId: data.run_id });
+      setTimeout(() => { onClose(); setIdea(""); setResult(null); }, 2000);
+    } catch (e) {
+      setResult({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -145,9 +173,15 @@ function NewRunSheet() {
           realcode run &quot;{idea || "..."}&quot;
         </code>
       </div>
-      <Button className="w-full" disabled={!idea}>
-        <Play className="h-4 w-4" /> Start run
+      <Button className="w-full" disabled={!idea.trim() || submitting} onClick={startRun}>
+        <Play className="h-4 w-4" /> {submitting ? "Starting..." : "Start run"}
       </Button>
+      {result?.runId && (
+        <p className="text-center text-xs text-status-pass">Started {result.runId} — refreshing...</p>
+      )}
+      {result?.error && (
+        <p className="text-center text-xs text-status-fail">Error: {result.error}</p>
+      )}
       <p className="text-center text-[11px] text-ink-600">
         Enters <span className="font-mono text-ink-500">frame</span>, then discover, plan, spec, build, ship. Cap $8.00.
       </p>

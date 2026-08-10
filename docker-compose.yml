@@ -44,7 +44,7 @@ services:
     container_name: realcode-dashboard
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - NODE_ENV=production
       - REALCODE_DATA_DIR=/data

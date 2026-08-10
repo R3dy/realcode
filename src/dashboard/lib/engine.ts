@@ -1,34 +1,89 @@
-import { loadStageGraph, Engine } from "@/engine";
-import { SQLiteQueue, FileStorage } from "@/backend";
-import { SandboxRunner } from "@/sandbox";
-import type { WorkItem } from "@/backend/types";
+import * as fs from "fs";
 import * as path from "path";
 
-const DATA_DIR = path.resolve(process.cwd(), ".realcode-data");
-const GRAPH_PATH = path.resolve(process.cwd(), "stage-graph.yaml");
+export interface RunRecord {
+  run_id: string;
+  idea: string;
+  status: string;
+  spent_usd: number;
+  cap_usd: number;
+  created_at: number;
+  workspace_path: string;
+}
 
-let _engine: Engine | null = null;
+export interface ControlDoc {
+  run_mode: "continuous" | "step" | "paused" | "paused_cost_cap";
+  concurrency: number;
+  per_stage_model_overrides: Record<string, string>;
+  cost_cap_usd: number;
+  updated_at: number;
+  updated_by: string;
+}
 
-export function getEngine(): Engine {
-  if (_engine) return _engine;
-  const graph = loadStageGraph(GRAPH_PATH);
-  const queue = new SQLiteQueue(path.join(DATA_DIR, "queue.db"));
-  const storage = new FileStorage(DATA_DIR);
-  const sandbox = new SandboxRunner();
-  const runner = {
-    async run(item: WorkItem, stage: any, workspacePath: string) {
-      const model = process.env.ANYMAKE_MODEL_TIER1 ?? "openrouter/z-ai/glm-5.2";
-      const result = await sandbox.run({
-        workspacePath,
-        model,
-        dispatchMessage: `Execute anymake Phase ${stage.anymake_phase} (${stage.id}). Prior: ${JSON.stringify(item.payload)}.`,
-        localMode: true,
-        timeoutMs: 300000,
-      });
-      const tokenUsage = SandboxRunner.extractTokenUsage(result.jsonEvents ?? []);
-      return { output_status: "pass", artifact: {}, token_usage: tokenUsage, trace_id: item.run_id };
+const DATA_DIR = process.env.REALCODE_DATA_DIR || path.resolve(process.cwd(), ".realcode-data");
+const CONTROL_PATH = path.join(DATA_DIR, "control.json");
+const RUNS_DIR = path.join(DATA_DIR, "runs");
+
+let _cache: { runs: RunRecord[]; ts: number } | null = null;
+const CACHE_TTL = 2000;
+
+export function getEngine() {
+  return {
+    listRuns(): RunRecord[] {
+      if (_cache && Date.now() - _cache.ts < CACHE_TTL) return _cache.runs;
+      const runs: RunRecord[] = [];
+      if (fs.existsSync(RUNS_DIR)) {
+        for (const dir of fs.readdirSync(RUNS_DIR, { withFileTypes: true })) {
+          if (!dir.isDirectory()) continue;
+          const fp = path.join(RUNS_DIR, dir.name, "run.json");
+          if (!fs.existsSync(fp)) continue;
+          try {
+            runs.push(JSON.parse(fs.readFileSync(fp, "utf8")) as RunRecord);
+          } catch {
+            // skip corrupt
+          }
+        }
+      }
+      runs.sort((a, b) => b.created_at - a.created_at);
+      _cache = { runs, ts: Date.now() };
+      return runs;
+    },
+    getRun(runId: string): RunRecord | null {
+      const fp = path.join(RUNS_DIR, runId, "run.json");
+      if (!fs.existsSync(fp)) return null;
+      try {
+        return JSON.parse(fs.readFileSync(fp, "utf8")) as RunRecord;
+      } catch {
+        return null;
+      }
+    },
+    getControlDoc(): ControlDoc {
+      if (!fs.existsSync(CONTROL_PATH)) {
+        return {
+          run_mode: "continuous",
+          concurrency: 1,
+          per_stage_model_overrides: {},
+          cost_cap_usd: 8.0,
+          updated_at: Date.now(),
+          updated_by: "default",
+        };
+      }
+      const doc = JSON.parse(fs.readFileSync(CONTROL_PATH, "utf8")) as ControlDoc;
+      if (doc.concurrency < 1) doc.concurrency = 1;
+      return doc;
+    },
+    setControlDoc(partial: Partial<ControlDoc>, updatedBy: string): void {
+      const current = this.getControlDoc();
+      const next: ControlDoc = {
+        ...current,
+        ...partial,
+        updated_at: Date.now(),
+        updated_by: updatedBy,
+      };
+      if (next.concurrency < 1) next.concurrency = 1;
+      const tmp = `${CONTROL_PATH}.tmp.${process.pid}`;
+      fs.writeFileSync(tmp, JSON.stringify(next, null, 2));
+      fs.renameSync(tmp, CONTROL_PATH);
     },
   };
-  _engine = new Engine(graph, queue, storage, runner, DATA_DIR);
-  return _engine;
 }

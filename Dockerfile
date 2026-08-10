@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 COPY tsconfig.json ./
 COPY src/ ./src/
@@ -21,6 +21,8 @@ COPY stage-graph.yaml ./
 COPY schemas/ ./schemas/
 
 RUN npm run build
+
+RUN npm prune --omit=dev && rm -rf src node_modules/.cache
 
 RUN mkdir -p /data
 
