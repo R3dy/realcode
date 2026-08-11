@@ -106,7 +106,7 @@ stages:
       - { from: built, on: ceiling, to: ship_failed }
     concurrency: 1
     soft_budget_tokens: 80000
-    timeout_ms: 300000
+    timeout_ms: 600000
     model_tier: 2
     permission_mode: unattended_with_approval_on_deploy
     artifact_schema: schemas/ship.schema.json
