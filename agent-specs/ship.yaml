@@ -100,7 +100,10 @@ user_prompt_template: |
   Ship the built repo. You have Read, Write, and Bash only — no skills, no deployment.
 
   Inputs:
-    repo_path: {build.repo_path}
+    workspace (the repo root INSIDE this sandbox — use THIS path for all file/git operations):
+    {workspace}
+    repo_path (container-internal engine path — for reference only, do NOT use for file access):
+    {build.repo_path}
     test_results: {build.test_results}
     PRD (markdown):
     ---
@@ -108,6 +111,11 @@ user_prompt_template: |
     ---
     project_type: {frame.project_type}
 
+  IMPORTANT: The built repo is mounted at {workspace} inside this sandbox. Use {workspace} as the
+  repo root for ALL cd/git/test commands. Do NOT use {build.repo_path} for file access — that path
+  is the engine's container-internal path and does not exist in this sandbox.
+
   Run the procedure in the system prompt: verify tests, git state, README, secrets; determine
-  repo_url (git remote origin, else file://<repo_path>); write launch-checklist.md and
-  metrics-dashboard.md into the repo; then print the ShipOutput JSON to stdout as the final line.
+  repo_url (git remote origin, else file://{workspace}); write launch-checklist.md and
+  metrics-dashboard.md into {workspace}; then print the ShipOutput JSON wrapped in
+  <artifact>...</artifact> tags as your final output. Do NOT wrap in markdown code fences.
