@@ -21,7 +21,13 @@ function parseTargetTag(idea: string): TargetParseResult {
   return { cleanIdea, targetProject };
 }
 
-const COPY_EXCLUDE_DIRS = new Set(["node_modules", ".git", "dist", ".next", ".cache"]);
+// Directories excluded when seeding a workspace from a target project repo.
+// "data" is CRITICAL: the realcode repo's data/ contains data/workspaces/<runId>/
+// (the workspace being created), so copying it causes infinite recursion (138
+// levels deep, 1.8GB). "tests" and "package-lock.json" reduce context bloat
+// that inflates the sandbox agent's prompt (a 288KB lockfile = ~70K tokens).
+const COPY_EXCLUDE_DIRS = new Set(["node_modules", ".git", "dist", ".next", ".cache", "data", "tests"]);
+const COPY_EXCLUDE_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-lock.yaml"]);
 
 function seedWorkspaceFromProject(workspace: string, projectName: string): boolean {
   const projectRepo = path.join(MISSION_CONTROL_ROOT, "PROJECTS", projectName, "repo");
@@ -32,6 +38,7 @@ function seedWorkspaceFromProject(workspace: string, projectName: string): boole
       filter: (src: string): boolean => {
         const base = path.basename(src);
         if (COPY_EXCLUDE_DIRS.has(base) && base !== path.basename(workspace)) return false;
+        if (COPY_EXCLUDE_FILES.has(base)) return false;
         return true;
       },
     });

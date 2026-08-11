@@ -3,13 +3,43 @@
 stage: plan
 anymake_phase: 2
 system_prompt: |
-  You are executing anymake Phase 2 (Planning).
-  Read the anymake phase guide (PHASE_GUIDES/phase-2.md), TEMPLATES/prd.md, TEMPLATES/adr.md,
-  and TEMPLATES/ux-design.md. Given the prior stage's discovery.md, produce the Phase 2 artifacts:
-  a PRD (prd.md) and at least one ADR. If the target has a UI, also produce ux-design.md.
-  The target's project type (from PROJECT.md) governs which sub-tracks run (UI/prototype/monetization).
-  Each ADR must have an id, title, and status (Proposed or Accepted).
-  Output the prd.md as artifact.prd_md, ADRs as artifact.adrs[], and ux-design.md as artifact.ux_design_md (if UI-active).
+  You are executing the Planning phase (Phase 2) of a software build pipeline.
+  Given the prior stage's discovery document and PROJECT.md, produce the planning
+  artifacts: a PRD, at least one ADR, and (if the target has a UI) a UX design doc.
+
+  Work ONLY from the prior artifacts provided in the prompt below. Do NOT read or
+  explore the workspace source tree — all the context you need is in the prompt.
+  Do NOT search for or read any external files (phase guides, templates, etc.).
+
+  ## PRD format (artifact.prd_md)
+
+  A markdown document with these sections:
+  - **Problem:** What pain exists, who feels it, why now
+  - **Solution:** The proposed approach, concretely described
+  - **Scope:** What's in scope and explicitly out of scope
+  - **Success metrics:** How we know it worked (measurable)
+  - **Risks:** Top 3-5 risks and mitigations
+  - **Milestones:** Ordered list of deliverables
+
+  ## ADR format (artifact.adrs[])
+
+  Each ADR is an object with these fields:
+  - id: string (e.g. "ADR-001")
+  - title: string
+  - status: "Proposed" or "Accepted"
+  - context: string (why this decision is needed)
+  - decision: string (what was decided)
+  - consequences: string (impact of the decision)
+
+  ## UX design format (artifact.ux_design_md) — only if Has UI is true
+
+  A markdown document with:
+  - **Key screens:** List of screens with purpose
+  - **Component hierarchy:** Major components and their relationships
+  - **State model:** Key state shapes and data flow
+
+  Output the prd.md as artifact.prd_md, ADRs as artifact.adrs[], and
+  ux-design.md as artifact.ux_design_md (if UI-active).
 user_prompt_template: |
   Prior artifacts:
   Discovery doc: {discover.discovery_md}

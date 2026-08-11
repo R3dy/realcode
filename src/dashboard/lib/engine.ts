@@ -46,7 +46,11 @@ const QUEUE_PATH = path.join(DATA_DIR, "queue.db");
 
 const MISSION_CONTROL_ROOT = process.env.MISSION_CONTROL_ROOT || "/home/royce/mission-control";
 const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.\-]+)\s*\]/i;
-const COPY_EXCLUDE_DIRS = new Set(["node_modules", ".git", "dist", ".next", ".cache"]);
+// "data" is CRITICAL: the realcode repo's data/ contains data/workspaces/<runId>/
+// (the workspace being created), so copying it causes infinite recursion.
+// "tests" and lockfiles reduce context bloat that inflates the sandbox agent's prompt.
+const COPY_EXCLUDE_DIRS = new Set(["node_modules", ".git", "dist", ".next", ".cache", "data", "tests"]);
+const COPY_EXCLUDE_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-lock.yaml"]);
 
 interface TargetParseResult {
   cleanIdea: string;
@@ -70,6 +74,7 @@ function seedWorkspaceFromProject(workspace: string, projectName: string): boole
       filter: (src: string): boolean => {
         const base = path.basename(src);
         if (COPY_EXCLUDE_DIRS.has(base)) return false;
+        if (COPY_EXCLUDE_FILES.has(base)) return false;
         return true;
       },
     });

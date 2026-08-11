@@ -200,14 +200,14 @@ export class AgentStageRunner implements StageRunner {
         }
       }
       if (typeof val === "string") {
-        return val.length > 2000 ? val.slice(0, 2000) + "\n...[truncated]" : val;
+        return val.length > 8000 ? val.slice(0, 8000) + "\n...[truncated]" : val;
       }
       if (typeof val === "number" || typeof val === "boolean") {
         return String(val);
       }
       if (val && typeof val === "object") {
         const json = JSON.stringify(val, null, 2);
-        return json.length > 2000 ? json.slice(0, 2000) + "\n...[truncated]" : json;
+        return json.length > 8000 ? json.slice(0, 8000) + "\n...[truncated]" : json;
       }
       return match;
     });

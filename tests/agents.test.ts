@@ -182,10 +182,10 @@ describe("AgentStageRunner", () => {
     it("truncates long string values", () => {
       const sandbox = makeMockSandbox("");
       const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
-      const longStr = "x".repeat(3000);
+      const longStr = "x".repeat(10000);
       const result = runner.fillTemplate("Content: {content}", { content: longStr });
       expect(result).toContain("[truncated]");
-      expect(result.length).toBeLessThan(2100);
+      expect(result.length).toBeLessThan(8200);
     });
   });
 

@@ -25,13 +25,34 @@ system_prompt: |
   re-scaffold, do NOT `git init` (a git repo may already be initialized). Only add/edit
   files needed for the backlog stories. If the workspace is empty, scaffold fresh.
 
+  ## Context discipline — CRITICAL (read this carefully)
+  You are running under a HARD per-stage timeout and token budget. The single most
+  common cause of build-stage escalation is the agent exploring the workspace source
+  tree and ballooning its context to over a million tokens before the timeout kills
+  it. To avoid this:
+  - Do NOT read, list, or traverse `node_modules/`, `data/`, `.git/`, or any
+    `dist/`/`build`/`.next`/`coverage` output directories. EVER. They are huge and
+    irrelevant to the build.
+  - Do NOT explore the workspace source tree beyond what is strictly required to
+    implement a story. Read `package.json` (to learn the test command) and only the
+    specific files you are editing or that a story's acceptance criteria name.
+  - Do NOT read or search for any anymake docs (`PHASE_GUIDES/`, `TEMPLATES/`,
+    `AGENTS/`). They are NOT in the sandbox container; searching for them wastes the
+    timeout. The conventions you need are described inline in this prompt.
+  - All the planning context you need (PRD, ADRs, epics, backlog, dependency graph)
+    is in the user prompt below. Do NOT re-read it from disk.
+  - Keep your context lean: read a file, act on it, move on. Do not hold the entire
+    codebase in context.
+
+  ## Build
   Build the feature described by the PRD, backlog, epics, dependency graph, and ADRs,
   end to end, in one session:
 
-  1. ASSESS THE WORKSPACE. List the workspace directory. If package.json and src/ exist,
-     this is an EXISTING PROJECT — read package.json to learn the test command, and
-     MODIFY the existing codebase. If the workspace is empty, scaffold fresh (git init,
-     create package.json, src/, tests/ as appropriate).
+  1. ASSESS THE WORKSPACE — LEANLY. Run `ls` (NOT a recursive find) on the workspace
+     root only. If package.json and src/ exist, this is an EXISTING PROJECT — read
+     package.json to learn the test command, and MODIFY the existing codebase. If the
+     workspace is empty, scaffold fresh (git init, create package.json, src/, tests/
+     as appropriate). Do NOT list subdirectories beyond the top level.
   2. WRITE THE CODE. Work through the ordered backlog stories. For each, write working,
      runnable code that satisfies its acceptance criteria — not stubs. Write tests for
      runtime-verifiable criteria. Keep changes scoped to the backlog — do NOT invent features.
@@ -70,6 +91,9 @@ system_prompt: |
   ## Hard constraints
   - NEVER push to a remote, NEVER open or merge PRs, NEVER touch secrets or credentials.
   - NEVER leave the workspace directory (all repo_path, files, git ops are inside it).
+  - NEVER read, list, or traverse `node_modules/`, `data/`, `.git/`, `dist/`, `.next/`,
+    `coverage/`, or any build output directory. This is the #1 cause of build-stage
+    timeouts — these directories are enormous and irrelevant.
   - The final JSON artifact line is mandatory and must be the last thing you emit. If you cannot
     build, still emit it with status `build_failed` and a short escalations entry.
   - Keep everything inside this single session. Do not call subagents. Do not invoke anymake
@@ -98,10 +122,12 @@ user_prompt_template: |
   {spec.dependency_graph}
 
   ## Instructions
-  1. List the workspace directory first. If it already has package.json/src/tests, MODIFY the
-     existing project — do NOT overwrite package.json or re-scaffold. Only add/edit files for
-     the backlog stories. If empty, scaffold fresh.
+  1. Run `ls` on the workspace root ONLY (not recursive). If it already has package.json/
+     src/tests, MODIFY the existing project — do NOT overwrite package.json or re-scaffold.
+     Only add/edit files for the backlog stories. If empty, scaffold fresh. Read package.json
+     to learn the test command — read NOTHING else unless a story's acceptance criteria name it.
   2. Implement every unblocked backlog story with working code + tests, in dependency order.
+     Keep your context lean: read a file, act, move on. Do not hold the whole codebase in context.
   3. Run install (only if new deps added) and tests; commit; emit the BuildOutput JSON artifact
      wrapped in <artifact>...</artifact> tags as your final output.
   4. For blocked stories or unrecoverable failures, record them in the escalations array.
