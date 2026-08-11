@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import type { Run, RunStatus, StageName, Stage, StageStatus } from "./data";
 import { STAGE_ORDER } from "./data";
 
+export type { RunDetailResponse, DetailStageStatus } from "./engine";
+
 export interface RunRecord {
   run_id: string;
   idea: string;
@@ -153,5 +155,23 @@ export async function putControl(doc: Partial<ControlDoc>): Promise<ControlDoc> 
     body: JSON.stringify(doc),
   });
   if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+
+export async function fetchRunDetail(
+  id: string,
+): Promise<import("./engine").RunDetailResponse | null> {
+  const res = await fetch(`/api/runs/${id}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json() as Promise<import("./engine").RunDetailResponse>;
+}
+
+export async function deleteRun(
+  id: string,
+  force = false,
+): Promise<{ deleted: string } | { error: string; status: string }> {
+  const url = force ? `/api/runs/${id}?force=1` : `/api/runs/${id}`;
+  const res = await fetch(url, { method: "DELETE" });
   return res.json();
 }

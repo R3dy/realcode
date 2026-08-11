@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import Database from "better-sqlite3";
+import { STAGE_ORDER, type StageName, type StageStatus } from "./data";
 
 export interface RunRecord {
   run_id: string;
@@ -20,6 +21,22 @@ export interface ControlDoc {
   cost_cap_usd: number;
   updated_at: number;
   updated_by: string;
+}
+
+// Detail-page stage-status vocabulary (adds "not-reached" to the board's StageStatus)
+export type DetailStageStatus = StageStatus | "not-reached";
+
+export interface RunDetailResponse {
+  run: RunRecord;
+  stages: Record<StageName, DetailStageStatus>;
+  artifacts: Partial<Record<StageName, unknown>>;
+}
+
+export class RunNotFoundError extends Error {
+  constructor(runId: string) {
+    super(`run not found: ${runId}`);
+    this.name = "RunNotFoundError";
+  }
 }
 
 const DATA_DIR = process.env.REALCODE_DATA_DIR || path.resolve(process.cwd(), ".realcode-data");
@@ -85,6 +102,55 @@ function getQueueDb(): Database.Database {
     )`);
   }
   return _db;
+}
+
+// Maps a run's top-level status + which stage artifacts are present on disk
+// to a per-stage DetailStageStatus for the detail page.
+const STATUS_TO_STAGE: Record<string, StageName> = {
+  intake: "frame",
+  framing_failed: "frame",
+  framed: "discover",
+  discovered: "plan",
+  discovery_failed: "discover",
+  planned: "spec",
+  plan_failed: "plan",
+  specified: "build",
+  spec_failed: "spec",
+  built: "ship",
+  build_failed: "build",
+  escalated: "build",
+  shipped: "ship",
+  ship_failed: "ship",
+};
+
+export function deriveStageStatuses(
+  run: RunRecord,
+  presentArtifacts: Set<StageName>,
+): Record<StageName, DetailStageStatus> {
+  const current = STATUS_TO_STAGE[run.status] ?? "frame";
+  const currentIdx = STAGE_ORDER.indexOf(current);
+  const isFailed = run.status.endsWith("_failed");
+  const isShipped = run.status === "shipped";
+  const failedStage = isFailed ? current : null;
+
+  const result = {} as Record<StageName, DetailStageStatus>;
+  for (let i = 0; i < STAGE_ORDER.length; i++) {
+    const stage = STAGE_ORDER[i];
+    if (isShipped) {
+      result[stage] = "pass";
+    } else if (stage === failedStage) {
+      result[stage] = "fail";
+    } else if (i < currentIdx) {
+      result[stage] = "pass";
+    } else if (i === currentIdx) {
+      // The in-flight stage: "running" unless it's the failed stage (handled above)
+      // or the run is still in intake (pending, not started yet)
+      result[stage] = run.status === "intake" ? "pending" : isFailed ? "fail" : "running";
+    } else {
+      result[stage] = "not-reached";
+    }
+  }
+  return result;
 }
 
 export function getEngine() {
@@ -187,6 +253,50 @@ export function getEngine() {
         now
       );
       return run;
+    },
+    getRunDetail(runId: string): RunDetailResponse | null {
+      const runDir = path.join(RUNS_DIR, runId);
+      const runFp = path.join(runDir, "run.json");
+      if (!fs.existsSync(runFp)) return null;
+      let run: RunRecord;
+      try {
+        run = JSON.parse(fs.readFileSync(runFp, "utf8")) as RunRecord;
+      } catch {
+        return null;
+      }
+      const presentArtifacts = new Set<StageName>();
+      const artifacts: Partial<Record<StageName, unknown>> = {};
+      for (const stage of STAGE_ORDER) {
+        const artifactFp = path.join(runDir, `${stage}.json`);
+        if (fs.existsSync(artifactFp)) {
+          try {
+            artifacts[stage] = JSON.parse(fs.readFileSync(artifactFp, "utf8"));
+            presentArtifacts.add(stage);
+          } catch {
+            // corrupt artifact — skip
+          }
+        }
+      }
+      const stages = deriveStageStatuses(run, presentArtifacts);
+      return { run, stages, artifacts };
+    },
+    deleteRun(runId: string): void {
+      const runDir = path.join(RUNS_DIR, runId);
+      if (!fs.existsSync(path.join(runDir, "run.json"))) {
+        throw new RunNotFoundError(runId);
+      }
+      // 1. Remove the run data directory
+      fs.rmSync(runDir, { recursive: true, force: true });
+      // 2. Remove the workspace directory if it exists
+      const workspaceDir = path.join(DATA_DIR, "workspaces", runId);
+      if (fs.existsSync(workspaceDir)) {
+        fs.rmSync(workspaceDir, { recursive: true, force: true });
+      }
+      // 3. Delete work_items rows for this run from the queue
+      const db = getQueueDb();
+      db.prepare("DELETE FROM work_items WHERE run_id = ?").run(runId);
+      // 4. Invalidate the list cache so the board sees the deletion
+      _cache = null;
     },
   };
 }

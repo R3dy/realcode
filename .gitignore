@@ -10,3 +10,4 @@ coverage/
 *.log
 data/
 .realcode-data/
+tsconfig.tsbuildinfo
