@@ -4,10 +4,15 @@ import { loadStageGraph, Engine } from "./engine/index.js";
 import { SQLiteQueue, FileStorage } from "./backend/index.js";
 import { SandboxRunner } from "./sandbox/index.js";
 import { AgentStageRunner } from "./agents/index.js";
+import { initTracing, shutdownTracing } from "./engine/tracing.js";
 
 const DATA_DIR = process.env.REALCODE_DATA_DIR || path.resolve(process.cwd(), ".realcode-data");
 const GRAPH_PATH = process.env.REALCODE_GRAPH || path.resolve(process.cwd(), "stage-graph.yaml");
 const INTERVAL_MS = parseInt(process.env.REALCODE_DISPATCH_INTERVAL_MS || "5000", 10);
+
+initTracing(process.env.OTEL_SERVICE_NAME || "realcode-engine");
+process.on("SIGINT", async () => { await shutdownTracing(); process.exit(0); });
+process.on("SIGTERM", async () => { await shutdownTracing(); process.exit(0); });
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 

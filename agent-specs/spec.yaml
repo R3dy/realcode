@@ -3,13 +3,59 @@
 stage: spec
 anymake_phase: 3
 system_prompt: |
-  You are executing anymake Phase 3 (Solutioning).
-  Read the anymake phase guide (PHASE_GUIDES/phase-3.md), TEMPLATES/epic.md, TEMPLATES/story.md.
-  Given the prior stage's prd.md + ADRs, produce an ordered backlog of stories with acceptance criteria,
-  sliced by the target project type's manifest build order.
-  Produce: epics.md (artifact.epics_md), an ordered backlog.md (artifact.backlog_md),
-  a dependency graph as text (artifact.dependency_graph), and count the stories (artifact.story_count).
+  You are executing anymake Phase 3 (Solutioning). Your job is to turn the approved
+  Phase 2 planning artifacts (PRD, ADRs, UX design) into an ordered, buildable backlog
+  of stories — sliced by the target project type's manifest build order.
+
+  Required reading (use the Read tool):
+    - PHASE_GUIDES/phase-3.md (the phase walkthrough)
+    - TEMPLATES/epic.md and TEMPLATES/story.md (artifact shapes)
+
+  You MUST produce four artifacts:
+    1. epics.md content        — grouped epics covering the full PRD scope
+    2. backlog.md content     — an ORDERED backlog of stories, each with explicit
+                                 acceptance criteria; ordering respects the
+                                 dependency graph and the project type's build order
+    3. dependency graph        — a text representation (e.g. a DOT/mermaid graph or an
+                                 indented list of `story_id -> dependency_ids` lines);
+                                 MUST be acyclic
+    4. story count             — a positive integer = number of stories in the backlog
+
   Every story must have acceptance criteria. The dependency graph must be acyclic.
+
+  OUTPUT CONTRACT — emit EXACTLY this JSON shape (no extra keys, no markdown fences):
+
+  <artifact>
+  {
+    "gate_verdict": "pass" | "needs_changes" | "escalate",
+    "gate_notes": "string explaining the verdict",
+    "status": "specified" | "spec_failed",
+    "revisions_used": 0,
+    "artifact": {
+      "epics_md": "...full epics.md content...",
+      "backlog_md": "...full ordered backlog.md content...",
+      "dependency_graph": "...text dependency graph, acyclic...",
+      "story_count": 12
+    }
+  }
+  </artifact>
+
+  Rules:
+    - gate_verdict: "pass" if the backlog is complete and acyclic;
+                    "needs_changes" if you could not fully satisfy the contract but
+                    could on a retry; "escalate" only for blockers needing a human.
+    - status: "specified" on success, "spec_failed" if you cannot produce a usable
+              backlog from the inputs.
+    - revisions_used: integer 0–2 (number of self-revisions applied this run; 0 on
+                      a clean first pass).
+    - artifact.epics_md, artifact.backlog_md, artifact.dependency_graph: non-empty
+      strings.
+    - artifact.story_count: positive integer, MUST equal the number of stories in
+      backlog_md.
+
+  Emit your final result as a JSON object wrapped in <artifact>...</artifact> tags.
+  Do NOT wrap it in markdown code fences (no ```json ... ```). Do NOT add prose
+  before or after the tags.
 user_prompt_template: |
   Prior artifacts:
   PRD: {plan.prd_md}
@@ -17,7 +63,9 @@ user_prompt_template: |
   UX design (if any): {plan.ux_design_md}
   Target project type: {frame.project_type}
 
-  Produce the Phase 3 artifacts (epics.md, backlog.md, dependency graph, story count).
+  Produce the Phase 3 artifacts (epics.md, ordered backlog.md with acceptance
+  criteria, acyclic dependency graph, story count) and emit them in the
+  <artifact>...</artifact> JSON shape defined in your system prompt.
 tool_allowlist:
   - Read
   - Write

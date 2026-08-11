@@ -20,6 +20,7 @@ const StageEntry = z.object({
   transitions: z.array(Transition).min(1),
   concurrency: z.number().int().positive().default(1),
   soft_budget_tokens: z.number().int().positive(),
+  timeout_ms: z.number().int().positive().default(300_000),
   model_tier: z.number().int().min(1).max(3),
   permission_mode: z.enum(["unattended", "unattended_with_approval_on_deploy"]),
   artifact_schema: z.string().min(1),

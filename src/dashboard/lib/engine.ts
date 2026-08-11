@@ -27,6 +27,43 @@ const CONTROL_PATH = path.join(DATA_DIR, "control.json");
 const RUNS_DIR = path.join(DATA_DIR, "runs");
 const QUEUE_PATH = path.join(DATA_DIR, "queue.db");
 
+const MISSION_CONTROL_ROOT = process.env.MISSION_CONTROL_ROOT || "/home/royce/mission-control";
+const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.\-]+)\s*\]/i;
+const COPY_EXCLUDE_DIRS = new Set(["node_modules", ".git", "dist", ".next", ".cache"]);
+
+interface TargetParseResult {
+  cleanIdea: string;
+  targetProject: string | null;
+}
+
+function parseTargetTag(idea: string): TargetParseResult {
+  const match = idea.match(TARGET_TAG_RE);
+  if (!match) return { cleanIdea: idea, targetProject: null };
+  const targetProject = match[1].trim();
+  const cleanIdea = idea.replace(match[0], "").replace(/\s{2,}/g, " ").trim();
+  return { cleanIdea, targetProject };
+}
+
+function seedWorkspaceFromProject(workspace: string, projectName: string): boolean {
+  const projectRepo = path.join(MISSION_CONTROL_ROOT, "PROJECTS", projectName, "repo");
+  if (!fs.existsSync(projectRepo) || !fs.statSync(projectRepo).isDirectory()) return false;
+  try {
+    fs.cpSync(projectRepo, workspace, {
+      recursive: true,
+      filter: (src: string): boolean => {
+        const base = path.basename(src);
+        if (COPY_EXCLUDE_DIRS.has(base)) return false;
+        return true;
+      },
+    });
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[engine] seedWorkspaceFromProject: copy failed for "${projectName}" -> ${workspace}: ${msg}`);
+    return false;
+  }
+}
+
 let _cache: { runs: RunRecord[]; ts: number } | null = null;
 const CACHE_TTL = 2000;
 
@@ -111,9 +148,21 @@ export function getEngine() {
     createRun(runId: string, idea: string): RunRecord {
       const workspace = `${DATA_DIR}/workspaces/${runId}`;
       fs.mkdirSync(workspace, { recursive: true });
+
+      const { cleanIdea, targetProject } = parseTargetTag(idea);
+      if (targetProject) {
+        const seeded = seedWorkspaceFromProject(workspace, targetProject);
+        if (!seeded) {
+          const projectRepo = path.join(MISSION_CONTROL_ROOT, "PROJECTS", targetProject, "repo");
+          if (!fs.existsSync(projectRepo)) {
+            console.warn(`[engine] createRun: target project "${targetProject}" not found at ${projectRepo}; proceeding with empty workspace`);
+          }
+        }
+      }
+
       const run: RunRecord = {
         run_id: runId,
-        idea,
+        idea: cleanIdea,
         status: "intake",
         spent_usd: 0,
         cap_usd: 8.0,
@@ -133,7 +182,7 @@ export function getEngine() {
         runId,
         "frame",
         "intake",
-        JSON.stringify({ idea, workspace }),
+        JSON.stringify({ idea: cleanIdea, workspace, ...(targetProject ? { target_project: targetProject } : {}) }),
         now,
         now
       );

@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
+import * as os from "os";
 
 export interface SandboxOptions {
   workspacePath: string;
@@ -95,7 +96,18 @@ export class SandboxRunner {
       const stderrChunks: Buffer[] = [];
       let timedOut = false;
 
-      const proc = spawn(cmd, args, { env: { ...env, PATH: process.env.PATH }, cwd, stdio: ["ignore", "pipe", "pipe"] });
+      // Ensure the cwd exists — spawn() throws ENOENT (misleadingly suggesting
+      // the binary is missing) when the cwd doesn't exist. For docker mode the
+      // cwd is the workspace path, which may not have been created for orphaned
+      // or re-published runs. Fall back to a temp dir if creation fails.
+      let spawnCwd = cwd;
+      try {
+        fs.mkdirSync(cwd, { recursive: true });
+      } catch {
+        spawnCwd = fs.mkdtempSync(path.join(os.tmpdir(), "realcode-exec-"));
+      }
+
+      const proc = spawn(cmd, args, { env: { ...env, PATH: process.env.PATH }, cwd: spawnCwd, stdio: ["ignore", "pipe", "pipe"] });
 
       const timer = setTimeout(() => {
         timedOut = true;

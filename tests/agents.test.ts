@@ -220,6 +220,45 @@ describe("AgentStageRunner", () => {
       const result = runner.extractArtifact(stdout);
       expect(result!.gate_verdict).toBe("pass");
     });
+
+    it("strips a ```json markdown code fence wrapping the artifact", () => {
+      const sandbox = makeMockSandbox("");
+      const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
+      const stdout = `<artifact>\n\`\`\`json\n{"gate_verdict": "pass", "status": "framed", "artifact": {}}\n\`\`\`\n</artifact>`;
+      const result = runner.extractArtifact(stdout);
+      expect(result).not.toBeNull();
+      expect(result!.gate_verdict).toBe("pass");
+      expect(result!.status).toBe("framed");
+    });
+
+    it("strips a bare ``` fence wrapping the artifact", () => {
+      const sandbox = makeMockSandbox("");
+      const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
+      const stdout = `<artifact>\n\`\`\`\n{"gate_verdict": "pass", "status": "framed", "artifact": {}}\n\`\`\`\n</artifact>`;
+      const result = runner.extractArtifact(stdout);
+      expect(result).not.toBeNull();
+      expect(result!.gate_verdict).toBe("pass");
+    });
+
+    it("brace-matches the JSON when prose precedes/follows it inside the tags", () => {
+      const sandbox = makeMockSandbox("");
+      const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
+      const stdout = `<artifact>\nHere is the result:\n{"gate_verdict": "pass", "status": "framed", "artifact": {}}\n(end)\n</artifact>`;
+      const result = runner.extractArtifact(stdout);
+      expect(result).not.toBeNull();
+      expect(result!.gate_verdict).toBe("pass");
+    });
+
+    it("extracts text from any event part carrying a text field (not just type=text)", () => {
+      const sandbox = makeMockSandbox("");
+      const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
+      const events = [
+        { part: { type: "reasoning", text: "<artifact>{\"gate_verdict\": \"pass\", \"status\": \"framed\", \"artifact\": {}}</artifact>", time: { start: 1, end: 2 } } },
+      ];
+      const result = runner.extractArtifact("", events);
+      expect(result).not.toBeNull();
+      expect(result!.gate_verdict).toBe("pass");
+    });
   });
 
   describe("gatherPriorArtifacts", () => {

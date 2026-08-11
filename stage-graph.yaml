@@ -19,6 +19,7 @@ stages:
       - { from: intake, on: ceiling, to: framing_failed }
     concurrency: 1
     soft_budget_tokens: 50000
+    timeout_ms: 300000
     model_tier: 1
     permission_mode: unattended
     artifact_schema: schemas/frame.schema.json
@@ -35,6 +36,7 @@ stages:
       - { from: framed, on: ceiling, to: discovery_failed }
     concurrency: 1
     soft_budget_tokens: 60000
+    timeout_ms: 300000
     model_tier: 2
     permission_mode: unattended
     artifact_schema: schemas/discover.schema.json
@@ -51,6 +53,7 @@ stages:
       - { from: discovered, on: ceiling, to: plan_failed }
     concurrency: 1
     soft_budget_tokens: 150000
+    timeout_ms: 300000
     model_tier: 1
     permission_mode: unattended
     artifact_schema: schemas/plan.schema.json
@@ -67,6 +70,7 @@ stages:
       - { from: planned, on: ceiling, to: spec_failed }
     concurrency: 1
     soft_budget_tokens: 120000
+    timeout_ms: 300000
     model_tier: 2
     permission_mode: unattended
     artifact_schema: schemas/spec.schema.json
@@ -85,6 +89,7 @@ stages:
       - { from: specified, on: escalate, to: escalated }
     concurrency: 1
     soft_budget_tokens: 2500000
+    timeout_ms: 1200000
     model_tier: 3
     permission_mode: unattended
     artifact_schema: schemas/build.schema.json
@@ -101,6 +106,7 @@ stages:
       - { from: built, on: ceiling, to: ship_failed }
     concurrency: 1
     soft_budget_tokens: 80000
+    timeout_ms: 300000
     model_tier: 2
     permission_mode: unattended_with_approval_on_deploy
     artifact_schema: schemas/ship.schema.json

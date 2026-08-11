@@ -1,6 +1,47 @@
+import * as fs from "fs";
+import * as path from "path";
 import type { StageGraph, StageEntry } from "./stage-graph.js";
 import { findStageForStatus, applyTransition } from "./stage-graph.js";
 import type { Queue, Storage, WorkItem } from "../backend/types.js";
+import { startStageSpan, endSpan } from "./tracing.js";
+
+const MISSION_CONTROL_ROOT = process.env.MISSION_CONTROL_ROOT || "/home/royce/mission-control";
+const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.\-]+)\s*\]/i;
+
+interface TargetParseResult {
+  cleanIdea: string;
+  targetProject: string | null;
+}
+
+function parseTargetTag(idea: string): TargetParseResult {
+  const match = idea.match(TARGET_TAG_RE);
+  if (!match) return { cleanIdea: idea, targetProject: null };
+  const targetProject = match[1].trim();
+  const cleanIdea = idea.replace(match[0], "").replace(/\s{2,}/g, " ").trim();
+  return { cleanIdea, targetProject };
+}
+
+const COPY_EXCLUDE_DIRS = new Set(["node_modules", ".git", "dist", ".next", ".cache"]);
+
+function seedWorkspaceFromProject(workspace: string, projectName: string): boolean {
+  const projectRepo = path.join(MISSION_CONTROL_ROOT, "PROJECTS", projectName, "repo");
+  if (!fs.existsSync(projectRepo) || !fs.statSync(projectRepo).isDirectory()) return false;
+  try {
+    fs.cpSync(projectRepo, workspace, {
+      recursive: true,
+      filter: (src: string): boolean => {
+        const base = path.basename(src);
+        if (COPY_EXCLUDE_DIRS.has(base) && base !== path.basename(workspace)) return false;
+        return true;
+      },
+    });
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[dispatcher] seedWorkspaceFromProject: copy failed for "${projectName}" -> ${workspace}: ${msg}`);
+    return false;
+  }
+}
 
 export interface ControlDoc {
   run_mode: "continuous" | "step" | "paused" | "paused_cost_cap";
@@ -45,9 +86,21 @@ export class Engine {
   createRun(runId: string, idea: string): RunRecord {
     const workspace = `${this.dataDir}/workspaces/${runId}`;
     this.storage.mkdirSync?.(workspace);
+
+    const { cleanIdea, targetProject } = parseTargetTag(idea);
+    if (targetProject) {
+      const seeded = seedWorkspaceFromProject(workspace, targetProject);
+      if (!seeded) {
+        const projectRepo = path.join(MISSION_CONTROL_ROOT, "PROJECTS", targetProject, "repo");
+        if (!fs.existsSync(projectRepo)) {
+          console.warn(`[dispatcher] createRun: target project "${targetProject}" not found at ${projectRepo}; proceeding with empty workspace`);
+        }
+      }
+    }
+
     const run: RunRecord = {
       run_id: runId,
-      idea,
+      idea: cleanIdea,
       status: "intake",
       spent_usd: 0,
       cap_usd: this.graph.cost_cap_usd_per_run,
@@ -59,7 +112,7 @@ export class Engine {
       run_id: runId,
       stage: "frame",
       status: "intake",
-      payload: { idea, workspace },
+      payload: { idea: cleanIdea, workspace, ...(targetProject ? { target_project: targetProject } : {}) },
     });
     return run;
   }
@@ -153,8 +206,16 @@ export class Engine {
         continue;
       }
 
+      const stageSpan = startStageSpan(item.run_id, stage.id, "");
       try {
         const result = await this.runner.run(item, stage, run.workspace_path);
+        stageSpan.setAttributes({
+          "realcode.gate_verdict": result.output_status,
+          "realcode.tokens.prompt": result.token_usage.prompt_tokens,
+          "realcode.tokens.completion": result.token_usage.completion_tokens,
+          "realcode.tokens.total": result.token_usage.total_tokens,
+          "realcode.cost.usd": result.token_usage.estimated_cost_usd,
+        });
         run.spent_usd += result.token_usage.estimated_cost_usd;
         this.updateRun(run);
 
@@ -178,6 +239,7 @@ export class Engine {
         }
         this.queue.release(item.id, newStatus);
         this.setRunStatus(run, newStatus);
+        endSpan(stageSpan, true);
         dispatched++;
 
         if (control.run_mode === "step") {
@@ -187,6 +249,7 @@ export class Engine {
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        endSpan(stageSpan, false, msg);
         this.queue.release(item.id, "escalated");
         this.setRunStatus(run, "escalated");
         dispatched++;

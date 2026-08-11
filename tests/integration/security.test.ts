@@ -39,19 +39,33 @@ describe("Security: credential isolation", () => {
       );
 
       expect(capturedOpts.length).toBe(1);
-      expect(capturedOpts[0].env).toBeUndefined();
+      // The runner forwards ONLY scoped model-provider API keys to the sandbox
+      // (the sandbox is isolated and needs them to call the LLM). It must NOT
+      // forward arbitrary process env. Assert every forwarded key matches the
+      // model-key pattern (or none at all, when no keys are set).
+      const forwarded = capturedOpts[0].env ?? {};
+      const KEY_PATTERN = /^(OPENROUTER|OPENAI|ANTHROPIC|DEEPSEEK|GROQ|MISTRAL|TOGETHER|FIREWORKS|PERPLEXITY|COHERE|GOOGLE|AZURE)_(API_KEY|KEY)$/;
+      for (const key of Object.keys(forwarded)) {
+        expect(key).toMatch(KEY_PATTERN);
+      }
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("SandboxRunner Docker mode does not inherit process.env (only PATH + explicit opts.env)", () => {
+  it("SandboxRunner Docker mode reads only non-secret path-config env (no SECRET/KEY/TOKEN reads)", () => {
     const src = fs.readFileSync(path.resolve(REPO_ROOT, "src/sandbox/runner.ts"), "utf8");
     expect(src).toMatch(/private async runDocker/);
     const dockerMethod = src.slice(src.indexOf("private async runDocker"));
     const execCallIdx = dockerMethod.indexOf('this.exec("docker"');
     const dockerUpToExec = dockerMethod.slice(0, execCallIdx);
-    expect(dockerUpToExec).not.toContain("process.env");
+    // Path translation legitimately reads REALCODE_DATA_DIR / REALCODE_HOST_DATA_DIR
+    // (non-secret config). Assert no secret-bearing env var is read in docker mode.
+    const envReads = dockerUpToExec.match(/process\.env\.[A-Za-z_]+/g) || [];
+    const secretPattern = /(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|API_KEY)/i;
+    for (const read of envReads) {
+      expect(read).not.toMatch(secretPattern);
+    }
   });
 
   it("no secret-pattern env var names appear in the Docker -e args (only model + traceparent)", () => {

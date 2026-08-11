@@ -1,10 +1,11 @@
 "use client";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Terminal, Search } from "lucide-react";
+import { Terminal, Search, Plus } from "lucide-react";
 import { StatStrip } from "@/components/StatStrip";
 import { RunCard } from "@/components/RunCard";
-import { Skeleton } from "@/components/ui";
+import { Button, Skeleton } from "@/components/ui";
+import { NewRunDialog } from "@/components/NewRunDialog";
 import { type RunStatus } from "@/lib/data";
 import { usePoll, mapRunRecord, type RunRecord } from "@/lib/api";
 
@@ -28,7 +29,8 @@ const GROUPS: { id: Filter; label: string; match: (s: RunStatus) => boolean }[] 
 export default function BoardPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
-  const { data, loading, error } = usePoll<{ runs: RunRecord[] }>("/api/runs");
+  const [newRunOpen, setNewRunOpen] = useState(false);
+  const { data, loading, error, mutate } = usePoll<{ runs: RunRecord[] }>("/api/runs");
 
   const runs = (data?.runs ?? []).map(mapRunRecord);
 
@@ -40,10 +42,22 @@ export default function BoardPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-ink-100">Runs</h1>
-        <p className="mt-0.5 text-sm text-ink-500">Every idea moving through the pipeline. Click a run to inspect its full trace.</p>
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-ink-100">Runs</h1>
+          <p className="mt-0.5 text-sm text-ink-500">Every idea moving through the pipeline. Click a run to inspect its full trace.</p>
+        </div>
+        <Button onClick={() => setNewRunOpen(true)} className="shrink-0">
+          <Plus className="h-4 w-4" />
+          New run
+        </Button>
       </div>
+
+      <NewRunDialog
+        open={newRunOpen}
+        onClose={() => setNewRunOpen(false)}
+        onCreated={mutate}
+      />
 
       <StatStrip />
 

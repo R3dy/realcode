@@ -66,7 +66,7 @@ export class AgentStageRunner implements StageRunner {
       dispatchMessage,
       traceparent: traceId,
       localMode: this.options.localMode ?? true,
-      timeoutMs: this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      timeoutMs: stage.timeout_ms ?? this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       env: this.collectModelEnv(),
     });
 
@@ -231,7 +231,12 @@ export class AgentStageRunner implements StageRunner {
     for (const e of events) {
       const ev = e as Record<string, unknown>;
       const part = ev.part as Record<string, unknown> | undefined;
-      if (part && part.type === "text" && typeof part.text === "string") {
+      if (!part) continue;
+      // Collect text from any part carrying a string `text` field, not just
+      // `type === "text"`. Agents sometimes emit the <artifact> block inside a
+      // reasoning or tool-result part that also carries a `time` field, which
+      // would be skipped by a strict type check.
+      if (typeof part.text === "string") {
         text += part.text;
       }
     }
@@ -244,8 +249,44 @@ export class AgentStageRunner implements StageRunner {
     const closeIdx = text.indexOf(ARTIFACT_TAG_CLOSE, openIdx);
     if (closeIdx === -1) return null;
     const jsonStr = text.slice(openIdx + ARTIFACT_TAG_OPEN.length, closeIdx).trim();
+    return this.tryParseArtifact(jsonStr);
+  }
+
+  /**
+   * Parse the content between <artifact></artifact> tags into a JSON object.
+   * Agents frequently wrap the JSON in a markdown code fence (```json ... ```
+   * or bare ``` ... ```), and sometimes prepend/prose around it. This strips
+   * the fence and falls back to brace-matching the outermost JSON object so a
+   * valid artifact is not rejected as "not found".
+   */
+  private tryParseArtifact(raw: string): Record<string, unknown> | null {
+    let candidate = raw.trim();
+
+    // Strip a leading markdown code fence (```json or ```) + trailing fence.
+    const fenceMatch = candidate.match(/^```(?:json)?\s*\n([\s\S]*?)\n?```\s*$/);
+    if (fenceMatch) {
+      candidate = fenceMatch[1].trim();
+    }
+
+    // Direct parse.
+    const direct = this.parseJsonObject(candidate);
+    if (direct) return direct;
+
+    // Brace-match fallback: extract the outermost { ... } object. Handles prose
+    // around the JSON and partial fences that the regex above missed.
+    const firstBrace = candidate.indexOf("{");
+    const lastBrace = candidate.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      const sliced = candidate.slice(firstBrace, lastBrace + 1);
+      const matched = this.parseJsonObject(sliced);
+      if (matched) return matched;
+    }
+    return null;
+  }
+
+  private parseJsonObject(s: string): Record<string, unknown> | null {
     try {
-      const parsed = JSON.parse(jsonStr);
+      const parsed = JSON.parse(s);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         return parsed as Record<string, unknown>;
       }
