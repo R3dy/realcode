@@ -1,5 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
+import Database from "better-sqlite3";
 
 export interface RunRecord {
   run_id: string;
@@ -23,9 +25,30 @@ export interface ControlDoc {
 const DATA_DIR = process.env.REALCODE_DATA_DIR || path.resolve(process.cwd(), ".realcode-data");
 const CONTROL_PATH = path.join(DATA_DIR, "control.json");
 const RUNS_DIR = path.join(DATA_DIR, "runs");
+const QUEUE_PATH = path.join(DATA_DIR, "queue.db");
 
 let _cache: { runs: RunRecord[]; ts: number } | null = null;
 const CACHE_TTL = 2000;
+
+let _db: Database.Database | null = null;
+function getQueueDb(): Database.Database {
+  if (!_db) {
+    _db = new Database(QUEUE_PATH);
+    _db.exec(`CREATE TABLE IF NOT EXISTS work_items (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      status TEXT NOT NULL,
+      retry_count INTEGER DEFAULT 0,
+      worker_id TEXT,
+      lease_expires_at INTEGER,
+      payload TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`);
+  }
+  return _db;
+}
 
 export function getEngine() {
   return {
@@ -84,6 +107,37 @@ export function getEngine() {
       const tmp = `${CONTROL_PATH}.tmp.${process.pid}`;
       fs.writeFileSync(tmp, JSON.stringify(next, null, 2));
       fs.renameSync(tmp, CONTROL_PATH);
+    },
+    createRun(runId: string, idea: string): RunRecord {
+      const workspace = `${DATA_DIR}/workspaces/${runId}`;
+      fs.mkdirSync(workspace, { recursive: true });
+      const run: RunRecord = {
+        run_id: runId,
+        idea,
+        status: "intake",
+        spent_usd: 0,
+        cap_usd: 8.0,
+        created_at: Date.now(),
+        workspace_path: workspace,
+      };
+      const runsDir = path.join(RUNS_DIR, runId);
+      fs.mkdirSync(runsDir, { recursive: true });
+      fs.writeFileSync(path.join(runsDir, "run.json"), JSON.stringify(run, null, 2));
+      // Publish to the queue so the engine dispatches this run
+      const db = getQueueDb();
+      const now = Date.now();
+      db.prepare(
+        "INSERT INTO work_items (id, run_id, stage, status, retry_count, worker_id, lease_expires_at, payload, created_at, updated_at) VALUES (?, ?, ?, ?, 0, NULL, NULL, ?, ?, ?)"
+      ).run(
+        crypto.randomUUID(),
+        runId,
+        "frame",
+        "intake",
+        JSON.stringify({ idea, workspace }),
+        now,
+        now
+      );
+      return run;
     },
   };
 }

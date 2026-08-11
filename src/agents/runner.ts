@@ -67,6 +67,7 @@ export class AgentStageRunner implements StageRunner {
       traceparent: traceId,
       localMode: this.options.localMode ?? true,
       timeoutMs: this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      env: this.collectModelEnv(),
     });
 
     const tokenUsage = SandboxRunner.extractTokenUsage(result.jsonEvents ?? []);
@@ -83,7 +84,7 @@ export class AgentStageRunner implements StageRunner {
       };
     }
 
-    const partialArtifact = this.extractArtifact(result.stdout);
+    const partialArtifact = this.extractArtifact(result.stdout, result.jsonEvents);
     if (!partialArtifact) {
       return {
         output_status: "escalate" as const,
@@ -145,6 +146,22 @@ export class AgentStageRunner implements StageRunner {
     return process.env.ANYMAKE_MODEL_TIER1 ?? DEFAULT_MODEL;
   }
 
+  /**
+   * Collect model API keys + provider config from the engine's environment
+   * to pass through to the sandbox container. The sandbox runs isolated and
+   * does NOT inherit the engine's env, so credentials must be forwarded explicitly.
+   */
+  collectModelEnv(): Record<string, string> {
+    const env: Record<string, string> = {};
+    const KEY_PATTERN = /^(OPENROUTER|OPENAI|ANTHROPIC|DEEPSEEK|GROQ|MISTRAL|TOGETHER|FIREWORKS|PERPLEXITY|COHERE|GOOGLE|AZURE)_(API_KEY|KEY)$/;
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value && KEY_PATTERN.test(key)) {
+        env[key] = value;
+      }
+    }
+    return env;
+  }
+
   gatherPriorArtifacts(
     runId: string,
     currentStageId: string,
@@ -196,12 +213,37 @@ export class AgentStageRunner implements StageRunner {
     });
   }
 
-  extractArtifact(stdout: string): Record<string, unknown> | null {
-    const openIdx = stdout.lastIndexOf(ARTIFACT_TAG_OPEN);
+  extractArtifact(stdout: string, jsonEvents?: unknown[]): Record<string, unknown> | null {
+    // When opencode runs with --format json, the <artifact> block is embedded inside
+    // a JSON event's text field with escaped quotes. We need to extract the text
+    // content from the parsed events and search for the artifact tag there.
+    if (jsonEvents && jsonEvents.length > 0) {
+      const text = this.collectEventText(jsonEvents);
+      const artifact = this.findArtifactInText(text);
+      if (artifact) return artifact;
+    }
+    // Fallback: search raw stdout (works for non-JSON format or unescaped output)
+    return this.findArtifactInText(stdout);
+  }
+
+  private collectEventText(events: unknown[]): string {
+    let text = "";
+    for (const e of events) {
+      const ev = e as Record<string, unknown>;
+      const part = ev.part as Record<string, unknown> | undefined;
+      if (part && part.type === "text" && typeof part.text === "string") {
+        text += part.text;
+      }
+    }
+    return text;
+  }
+
+  private findArtifactInText(text: string): Record<string, unknown> | null {
+    const openIdx = text.lastIndexOf(ARTIFACT_TAG_OPEN);
     if (openIdx === -1) return null;
-    const closeIdx = stdout.indexOf(ARTIFACT_TAG_CLOSE, openIdx);
+    const closeIdx = text.indexOf(ARTIFACT_TAG_CLOSE, openIdx);
     if (closeIdx === -1) return null;
-    const jsonStr = stdout.slice(openIdx + ARTIFACT_TAG_OPEN.length, closeIdx).trim();
+    const jsonStr = text.slice(openIdx + ARTIFACT_TAG_OPEN.length, closeIdx).trim();
     try {
       const parsed = JSON.parse(jsonStr);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {

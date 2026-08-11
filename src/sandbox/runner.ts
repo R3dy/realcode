@@ -22,7 +22,7 @@ export interface SandboxResult {
 }
 
 export class SandboxRunner {
-  constructor(private opencodeBin: string = "opencode") {}
+  constructor(private opencodeBin: string = "opencode", private hostDataDir?: string) {}
 
   async run(opts: SandboxOptions): Promise<SandboxResult> {
     if (opts.localMode) {
@@ -58,18 +58,26 @@ export class SandboxRunner {
   private async runDocker(opts: SandboxOptions): Promise<SandboxResult> {
     const image = "realcode-sandbox:latest";
     const containerWorkspace = "/workspace";
+    // Translate the workspace path from container-internal to host path.
+    // The engine runs inside a container with /data mounted from ./data on the host.
+    // When spawning sibling containers, Docker needs the HOST path for volume mounts.
+    const containerDataDir = process.env.REALCODE_DATA_DIR || "/data";
+    const hostDataDir = this.hostDataDir || process.env.REALCODE_HOST_DATA_DIR || containerDataDir;
+    const hostWorkspacePath = hostDataDir === containerDataDir
+      ? opts.workspacePath
+      : opts.workspacePath.replace(containerDataDir, hostDataDir);
     const args = [
       "run", "--rm",
       "--cpus", "2",
       "--memory", "2g",
       "--stop-timeout", String(Math.ceil((opts.timeoutMs ?? 300000) / 1000)),
       "--network", "realcode-sandbox-net",
-      "-v", `${opts.workspacePath}:${containerWorkspace}:rw`,
+      "-v", `${hostWorkspacePath}:${containerWorkspace}:rw`,
       "-e", `OTEL_TRACEPARENT=${opts.traceparent ?? ""}`,
       "-e", `OPENCODE_MODEL=${opts.model}`,
       ...Object.entries(opts.env || {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
       image,
-      "opencode", "run", "--auto", "--format", "json",
+      "run", "--auto", "--format", "json",
       "--model", opts.model,
       "--dir", containerWorkspace,
     ];
