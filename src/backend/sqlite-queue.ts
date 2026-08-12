@@ -77,6 +77,13 @@ export class SQLiteQueue implements Queue {
     // Notes stored in a separate table in production; for MVP, logged via tracing
   }
 
+  heartbeat(item_id: string, lease_ms: number): void {
+    const now = Date.now();
+    this.db.prepare(
+      `UPDATE work_items SET lease_expires_at = ?, updated_at = ? WHERE id = ? AND worker_id IS NOT NULL`,
+    ).run(now + lease_ms, now, item_id);
+  }
+
   get(item_id: string): WorkItem | null {
     const row = this.db.prepare(`SELECT * FROM work_items WHERE id = ?`).get(item_id) as (Record<string, unknown> | undefined);
     return row ? this.mapRow(row) : null;

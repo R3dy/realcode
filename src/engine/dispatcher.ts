@@ -65,6 +65,7 @@ export interface StageRunner {
     artifact: Record<string, unknown>;
     token_usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; estimated_cost_usd: number };
     trace_id: string;
+    jsonEvents?: unknown[];
   }>;
 }
 
