@@ -176,6 +176,23 @@ describe("A4.5 dashboard API routes", () => {
     await reader.cancel();
   }, 15000);
 
+  it("A11.2 trace stream does NOT terminate immediately at status 'built' (AC: built removed from TERMINAL_RUN_STATUSES)", async () => {
+    // Regression for §4.7/1-C3: previously a 'built' run would emit a terminal
+    // 'done' in the same synchronous burst as 'connected', closing the stream.
+    // With 'built' removed, the first chunk must contain only 'connected'.
+    const r = await importRoutes();
+    makeRun("run_built", "built");
+    const res = await r.trace.GET(mockReq(`http://x/api/runs/run_built/trace`), { params: { id: "run_built" } });
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    const { value: firstChunk } = await reader.read();
+    const text = new TextDecoder().decode(firstChunk ?? new Uint8Array());
+    expect(text).toContain("connected");
+    expect(text).not.toContain("done");
+    expect(text).not.toContain("terminal");
+    await reader.cancel();
+  }, 15000);
+
   it("DELETE /api/runs/[id] returns 409 when build loop has running containers (no force)", async () => {
     const r = await importRoutes();
     makeRun("run_active", "specified");

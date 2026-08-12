@@ -68,6 +68,43 @@ export interface BuildState {
   containers: BuildContainerEntry[];
 }
 
+// ── Live-state types (A11.2 — realtime visibility for non-build stages) ──
+// Mirror src/engine/live-state.ts:14-51 exactly (field names, nullability).
+// The engine owns the source of truth; the dashboard only reads live.json.
+export interface LiveContainer {
+  container_id: string | null;
+  name: string;
+  role: string;
+  status: string;
+  started_at: number;
+  log_path: string;
+}
+
+export interface LiveTraceEvent {
+  kind: string;
+  stage: string;
+  agent: string;
+  content: string;
+  timestamp: number;
+  role?: string;
+  tool?: string;
+  tokens?: number;
+  cost_usd?: number;
+}
+
+export interface LiveState {
+  run_id: string;
+  stage: string | null;
+  status: string;
+  started_at: number;
+  updated_at: number;
+  container: LiveContainer | null;
+  events: LiveTraceEvent[];
+  tokens_total: number;
+  cost_usd: number;
+  failure_message?: string;
+}
+
 // Container view returned by /api/runs/[id]/containers — merges the explicit
 // `containers[]` array with per-story worker/validator container IDs (A4.2
 // populates worker_container_id/validator_container_id; A4.3 will populate
@@ -88,6 +125,7 @@ export interface RunDetailResponse {
   stages: Record<StageName, DetailStageStatus>;
   artifacts: Partial<Record<StageName, unknown>>;
   build_state?: BuildState;
+  live_state?: LiveState;
 }
 
 export class RunNotFoundError extends Error {
@@ -411,8 +449,10 @@ export function getEngine() {
       }
       const stages = deriveStageStatuses(run, presentArtifacts);
       const build_state = this.getBuildState(runId) ?? undefined;
+      const live_state = this.getLiveState(runId) ?? undefined;
       const detail: RunDetailResponse = { run, stages, artifacts };
       if (build_state) detail.build_state = build_state;
+      if (live_state) detail.live_state = live_state;
       return detail;
     },
     // ── Build-state helpers (A4.5) ──
@@ -425,13 +465,24 @@ export function getEngine() {
         return null;
       }
     },
+    // ── Live-state helper (A11.2) ──
+    // Mirrors getBuildState's null-on-missing/corrupt contract (INV-4): a
+    // malformed live.json can never crash the dashboard.
+    getLiveState(runId: string): LiveState | null {
+      const fp = path.join(RUNS_DIR, runId, "live.json");
+      if (!fs.existsSync(fp)) return null;
+      try {
+        return JSON.parse(fs.readFileSync(fp, "utf8")) as LiveState;
+      } catch {
+        return null;
+      }
+    },
     listContainers(runId: string): ContainerView[] {
       const state = this.getBuildState(runId);
-      if (!state) return [];
       const views: ContainerView[] = [];
       const seen = new Set<string>();
       // 1. Explicit containers[] entries (A4.3 wiring).
-      for (const c of state.containers ?? []) {
+      for (const c of state?.containers ?? []) {
         if (!c.container_id) continue;
         if (seen.has(c.container_id)) continue;
         seen.add(c.container_id);
@@ -448,7 +499,7 @@ export function getEngine() {
       }
       // 2. Per-story worker/validator container IDs (A4.2 fallback when
       //    the explicit containers[] array is empty / pre-A4.3 wiring).
-      for (const s of state.stories ?? []) {
+      for (const s of state?.stories ?? []) {
         const pairs: Array<[string | null, string]> = [
           [s.worker_container_id, "worker"],
           [s.validator_container_id, "validator"],
@@ -470,9 +521,41 @@ export function getEngine() {
           });
         }
       }
+      // 3. Live (non-build stage) container from live.json (A11.2). Stage-level,
+      //    not story-level, so story_id is "".
+      const live = this.getLiveState(runId);
+      if (live && live.container && live.container.container_id && !seen.has(live.container.container_id)) {
+        seen.add(live.container.container_id);
+        views.push({
+          container_id: live.container.container_id,
+          name: live.container.name,
+          story_id: "",
+          role: live.container.role,
+          status: "running",
+          started_at: live.container.started_at,
+          exited_at: null,
+          log_path: live.container.log_path,
+        });
+      }
       return views;
     },
     getContainerLogs(runId: string, cid: string, tail?: number): { text: string; log_path: string } | null {
+      // Live (non-build stage) container check runs FIRST (A11.2, 1-C6): match
+      // cid against live.container.container_id or live.container.name.
+      const live = this.getLiveState(runId);
+      if (live && live.container && (live.container.container_id === cid || live.container.name === cid)) {
+        const livePath = live.container.log_path;
+        const liveAbs = path.join(DATA_DIR, livePath);
+        if (!fs.existsSync(liveAbs)) return { text: "", log_path: livePath };
+        const liveText = fs.readFileSync(liveAbs, "utf8");
+        if (tail && tail > 0) {
+          let lines = liveText.split(/\r?\n/);
+          if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
+          return { text: lines.slice(Math.max(0, lines.length - tail)).join("\n"), log_path: livePath };
+        }
+        return { text: liveText, log_path: livePath };
+      }
+      // Fall through to the existing build_state resolution.
       const state = this.getBuildState(runId);
       if (!state) return null;
       // Resolve log_path through containers[] (match container_id or role+story).
@@ -514,9 +597,8 @@ export function getEngine() {
     },
     getTraceEvents(runId: string): TraceEvent[] {
       const state = this.getBuildState(runId);
-      if (!state) return [];
       const events: TraceEvent[] = [];
-      for (const s of state.stories ?? []) {
+      for (const s of state?.stories ?? []) {
         // Story-level stage events (status transitions).
         if (s.started_at) {
           events.push({
@@ -557,6 +639,29 @@ export function getEngine() {
             cost_usd: s.validator_cost_usd ?? 0,
           });
           events.push(...toolCallEvents(s.validator_output, "build_validator", s.story_id, s.completed_at ?? s.started_at ?? state.started_at));
+        }
+      }
+      // Append live (non-build stage) trace events from live.json (A11.2).
+      // Build events keep priority; live events fill the gap for non-build
+      // stages, deduped by signature `timestamp|stage|content`.
+      const live = this.getLiveState(runId);
+      if (live) {
+        const sigs = new Set(events.map((e) => `${e.timestamp}|${e.stage}|${e.content}`));
+        for (const lv of live.events ?? []) {
+          const sig = `${lv.timestamp}|${lv.stage}|${lv.content}`;
+          if (sigs.has(sig)) continue;
+          sigs.add(sig);
+          events.push({
+            kind: lv.kind as TraceEvent["kind"],
+            stage: lv.stage,
+            agent: lv.agent,
+            content: lv.content,
+            timestamp: lv.timestamp,
+            ...(lv.role !== undefined ? { role: lv.role } : {}),
+            ...(lv.tool !== undefined ? { tool: lv.tool } : {}),
+            tokens: lv.tokens ?? 0,
+            cost_usd: lv.cost_usd ?? 0,
+          });
         }
       }
       events.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
