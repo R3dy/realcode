@@ -63,12 +63,12 @@ Before this story: A4.1 (Contracts), A4.2 (Engine), A4.3 (Sandbox), A4.4 (Agent 
 
 **result:** success
 **failure_type:** *(omit if success)*
-**pr_url:** *(filled after push)*
-**pr_number:** 6
+**pr_url:** https://github.com/R3dy/realcode/pull/10
+**pr_number:** 10
 **branch:** story/A4.6-integration-e2e
 **base:** issue/4-multi-container-build-loop
 **commits:**
-- *(filled after commit)*
+- 6e0605e test(A4.6): un-skip e2e + build-loop integration tests + docker-compose sandbox target (#4)
 **test_output:** passed (206 tests, 0 skipped; 19 test files passed. 200 original [194 + 6 un-skipped e2e] + 6 new build-loop integration = 206)
 **lint_output:** clean (0 errors; 6 pre-existing warnings — none in A4.6 files)
 **typecheck:** clean (root `tsc --noEmit` exits 0)
