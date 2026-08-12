@@ -34,6 +34,24 @@ console.log(`  cost cap:   $${graph.cost_cap_usd_per_run}/run`);
 console.log(`  interval:   ${INTERVAL_MS}ms`);
 console.log(`  sandbox:    docker`);
 
+// Startup warning for missing host-path env vars in Docker mode (A4.3).
+// When the engine is containerized (REALCODE_DATA_DIR !== REALCODE_HOST_DATA_DIR
+// — the engine sees /data inside but the host path differs), the sandbox
+// runner needs REALCODE_HOST_OPENCODE_CONFIG_DIR + REALCODE_HOST_MISSION_CONTROL_ROOT
+// to construct `docker run -v` mounts that resolve on the HOST. When either
+// is unset, the corresponding mount is omitted (logged in runDocker); the
+// sandbox spawn does not crash. Surface this once at startup so the operator
+// sees the missing config before any dispatch attempts.
+const engineContainerized = process.env.REALCODE_DATA_DIR !== process.env.REALCODE_HOST_DATA_DIR;
+if (engineContainerized) {
+  if (!process.env.REALCODE_HOST_OPENCODE_CONFIG_DIR) {
+    console.warn(`[realcode-engine] WARNING: REALCODE_HOST_OPENCODE_CONFIG_DIR is unset in Docker mode — sandbox will not inherit the operator's opencode config (opencode.json, agents/, skills/, MCP servers). Set it to the host path of your ~/.config/opencode dir (e.g. /home/<you>/.config/opencode).`);
+  }
+  if (!process.env.REALCODE_HOST_MISSION_CONTROL_ROOT) {
+    console.warn(`[realcode-engine] WARNING: REALCODE_HOST_MISSION_CONTROL_ROOT is unset in Docker mode — MCP server paths under mission-control will not resolve inside the sandbox. Set it to the host path of your mission-control checkout (e.g. /home/<you>/mission-control).`);
+  }
+}
+
 async function loop() {
   try {
     const control = engine.getControlDoc();

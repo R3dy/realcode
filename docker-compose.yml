@@ -30,11 +30,15 @@ services:
       - REALCODE_GRAPH=/app/stage-graph.yaml
       - REALCODE_DISPATCH_INTERVAL_MS=${REALCODE_DISPATCH_INTERVAL_MS:-5000}
       - MISSION_CONTROL_ROOT=/mission-control
+      - REALCODE_HOST_MISSION_CONTROL_ROOT=${REALCODE_HOST_MISSION_CONTROL_ROOT:-/home/royce/mission-control}
+      - REALCODE_OPENCODE_CONFIG_DIR=/root/.config/opencode
+      - REALCODE_HOST_OPENCODE_CONFIG_DIR=${REALCODE_HOST_OPENCODE_CONFIG_DIR:-/home/royce/.config/opencode}
     volumes:
       - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/local/bin/docker:ro
-      - /home/royce/mission-control:/mission-control:ro
+      - ${REALCODE_HOST_MISSION_CONTROL_ROOT:-/home/royce/mission-control}:/mission-control:ro
+      - ${REALCODE_HOST_OPENCODE_CONFIG_DIR:-/home/royce/.config/opencode}:/root/.config/opencode:ro
     depends_on:
       phoenix:
         condition: service_started
@@ -58,11 +62,23 @@ services:
       - MISSION_CONTROL_ROOT=/mission-control
     volumes:
       - ./data:/data
-      - /home/royce/mission-control:/mission-control:ro
+      - ${REALCODE_HOST_MISSION_CONTROL_ROOT:-/home/royce/mission-control}:/mission-control:ro
     depends_on:
       - engine
     networks:
       - realcode-net
+
+  # Sandbox image build target (A4.3). Under a build-only profile so
+  # `docker compose up` does NOT start it — build via
+  # `docker compose build sandbox`. The engine spawns sibling containers from
+  # this image at runtime via docker-in-docker (docker.sock mounted).
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile.sandbox
+    image: realcode-sandbox:latest
+    profiles:
+      - build-only
 
   phoenix:
     image: arizephoenix/phoenix:latest

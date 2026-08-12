@@ -27,6 +27,7 @@ function makeMockSandbox(stdout: string, exitCode = 0, timedOut = false) {
       },
     ],
     timedOut,
+    containerId: "",
   };
   return {
     run: vi.fn().mockResolvedValue(mockResult),

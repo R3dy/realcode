@@ -9,6 +9,7 @@ import { FileStorage } from "../../src/backend/file-storage.js";
 import { AgentStageRunner } from "../../src/agents/runner.js";
 import { SandboxRunner } from "../../src/sandbox/runner.js";
 import { loadAgentSpec } from "../../src/agents/spec-loader.js";
+import { scanForSecrets } from "../../src/sandbox/secret-scan.js";
 import type { StageGraph } from "../../src/engine/stage-graph.js";
 import type { SandboxOptions, SandboxResult } from "../../src/sandbox/runner.js";
 
@@ -26,7 +27,7 @@ describe("Security: credential isolation", () => {
       const mockSandbox = {
         run: vi.fn(async (opts: SandboxOptions): Promise<SandboxResult> => {
           capturedOpts.push(opts);
-          return { exitCode: 0, stdout: "<artifact>{}</artifact>", stderr: "", jsonEvents: [], timedOut: false };
+          return { exitCode: 0, stdout: "<artifact>{}</artifact>", stderr: "", jsonEvents: [], timedOut: false, containerId: "" };
         }),
       };
 
@@ -76,6 +77,61 @@ describe("Security: credential isolation", () => {
     for (const line of envLines) {
       expect(line).not.toMatch(secretPattern);
     }
+  });
+
+  // ─── A4.3: opencode-config mount is read-only ──────────────────────────
+  it("the opencode-config mount is :ro (read-only — a sandboxed agent cannot modify the operator's config)", () => {
+    const src = fs.readFileSync(path.resolve(REPO_ROOT, "src/sandbox/runner.ts"), "utf8");
+    const dockerMethod = src.slice(src.indexOf("private async runDocker"));
+    // The mount string `${hostOpencodeConfigDir}:/root/.config/opencode:ro` —
+    // the :ro suffix is mandatory. A :rw or bare :/root/.config/opencode mount
+    // is a test failure (a sandboxed agent could then mutate the operator's
+    // opencode.json / agents / skills).
+    expect(dockerMethod).toContain(":/root/.config/opencode:ro");
+    expect(dockerMethod).not.toMatch(/:\/root\/\.config\/opencode(:rw)?["`]/);
+  });
+
+  // ─── A4.3: startup secret-scan refuses to spawn on a key-like match ────
+  it("scanForSecrets fires on a seeded key fixture (refuses to spawn) and is clean on a clean fixture", () => {
+    const dirtyDir = fs.mkdtempSync(path.join(os.tmpdir(), "realcode-secret-dirty-"));
+    const cleanDir = fs.mkdtempSync(path.join(os.tmpdir(), "realcode-secret-clean-"));
+    try {
+      // Dirty fixture: a JSON file containing a literal OpenAI-key-style value.
+      fs.writeFileSync(
+        path.join(dirtyDir, "opencode.json"),
+        JSON.stringify({ mcp: { fake: { command: ["node"] } }, note: "sk-test1234567890abcdef" }, null, 2),
+      );
+      const dirtyHits = scanForSecrets(dirtyDir);
+      expect(dirtyHits.length).toBeGreaterThan(0);
+      expect(dirtyHits[0].file).toBe("opencode.json");
+      // The pattern field names the matched pattern family — NEVER the value.
+      expect(dirtyHits[0].pattern).toMatch(/literal-secret-prefix|model-provider-env-key/);
+      expect(dirtyHits[0].pattern).not.toContain("sk-test");
+
+      // Clean fixture: no key-like content anywhere.
+      fs.writeFileSync(
+        path.join(cleanDir, "opencode.json"),
+        JSON.stringify({ mcp: { codebase: { command: ["/abs/path/to/bin"] } } }, null, 2),
+      );
+      const cleanHits = scanForSecrets(cleanDir);
+      expect(cleanHits).toEqual([]);
+    } finally {
+      fs.rmSync(dirtyDir, { recursive: true, force: true });
+      fs.rmSync(cleanDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runDocker refuses to spawn when scanForSecrets returns a non-empty result (the spawn guard reads REALCODE_OPENCODE_CONFIG_DIR)", () => {
+    const src = fs.readFileSync(path.resolve(REPO_ROOT, "src/sandbox/runner.ts"), "utf8");
+    const dockerMethod = src.slice(src.indexOf("private async runDocker"));
+    // The guard must call scanForSecrets on REALCODE_OPENCODE_CONFIG_DIR and
+    // return a SandboxResult with exitCode -1 (refuse, not warn) when it fires.
+    expect(dockerMethod).toContain("scanForSecrets(");
+    expect(dockerMethod).toContain("REALCODE_OPENCODE_CONFIG_DIR");
+    // The refuse path: exitCode -1, a loud warning in stderr, containerId "".
+    expect(dockerMethod).toMatch(/exitCode:\s*-1/);
+    expect(dockerMethod).toMatch(/containerId:\s*""/);
+    expect(dockerMethod).toMatch(/\[secret-scan\] refusing to spawn/);
   });
 });
 
