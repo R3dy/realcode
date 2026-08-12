@@ -686,17 +686,27 @@ Screenshots are required in the PR description for any story that produces UI ch
 
 <!-- Worker fills this section. Append below the line — do not delete existing content. -->
 
-**result:** success | failed
-**failure_type:** environment | implementation *(omit if success)*
-**classification_uncertain:** true *(omit if certain)*
-**failure_description:** *(if failed — specific, not vague)*
-**pr_url:**
-**pr_number:**
-**branch:**
+**result:** success
+**pr_url:** https://github.com/R3dy/realcode/pull/6
+**pr_number:** 6
+**branch:** story/A4.2-engine-build-loop-runner
 **commits:**
-- [SHA] [conventional commit message]
-- [SHA] [conventional commit message]
-**test_output:** passed ([N] tests) | failed ([N] tests, failure output below)
-*(— "no test suite" is never acceptable — minimum 1 test per runtime-verifiable criterion)*
-**lint_output:** clean | [N] warnings fixed
-**notes:** *(optional — anything the orchestrator should know)*
+- 84fe3be feat(A4.2): Queue.heartbeat + AgentStageRunner 4th param + STAGE_SCHEMAS build keys
+- 7e0bc87 feat(A4.2): BuildLoopRunner inner loop orchestrator + engine wiring
+- a5f969a test(A4.2): BuildLoopRunner unit tests + lease-heartbeat fake-timer tests
+**test_output:** passed (131 tests — 115 existing + 14 build-loop + 2 lease-heartbeat)
+**lint_output:** pre-existing failure (no eslint.config.js on base branch — not caused by this PR)
+**notes:**
+- All 18 acceptance criteria + 7 error paths + 3 edge cases are satisfied.
+- The dispatcher's `inner_loop` branch is UNREACHABLE at A4.2 (no stage has `worker_spec` in `stage-graph.yaml` — verified: `grep -c "worker_spec" stage-graph.yaml` exits 1). BuildLoopRunner is tested via direct unit tests with a mock AgentStageRunner.
+- `stage-graph.yaml` was NOT modified. `agent-specs/worker.yaml`/`validator.yaml` were NOT created.
+- The `BuildLoopRunner.run()` returns the loop-increment cost (not total run cost) — the dispatcher's existing `run.spent_usd += result.token_usage.estimated_cost_usd` computes the correct total without double-counting.
+- `BuildLoopRunner.run()` does NOT write `run.json` during the loop (stale-run overwrite race — the dispatcher writes it once at the end).
+- Heartbeat fires before BOTH Worker and Validator dispatches (2 per story), verified via `vi.spyOn(queue, "heartbeat")` call count assertions.
+- Control-doc pause mid-loop = terminal escalation (build-state.json has `paused: true`, remaining stories stay `pending`).
+- Cost cap mid-loop = terminal escalation (NOT `paused_cost_cap` — that status is only for before-dispatch cap hits).
+- Wall-clock bound test uses fake timers (`vi.useFakeTimers`) to advance past the deadline.
+- Lease-heartbeat test uses fake timers with 20-min sandbox durations (exceeding the old 10-min default lease) and a 4-hour `timeout_ms` (so the wall-clock bound isn't hit).
+- `npm run typecheck` passes clean — the optional 4th param on `AgentStageRunner.run()` and the 6-arg `Engine` call sites all typecheck.
+- ADR-009 is enforced: `src/engine/build-loop.ts` is listed in ADR-009's "Enforced in" field.
+- Review is required (ADR-touching: ADR-001, ADR-005, ADR-008, ADR-009).
