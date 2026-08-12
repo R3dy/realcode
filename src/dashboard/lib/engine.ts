@@ -449,8 +449,10 @@ export function getEngine() {
       }
       const stages = deriveStageStatuses(run, presentArtifacts);
       const build_state = this.getBuildState(runId) ?? undefined;
+      const live_state = this.getLiveState(runId) ?? undefined;
       const detail: RunDetailResponse = { run, stages, artifacts };
       if (build_state) detail.build_state = build_state;
+      if (live_state) detail.live_state = live_state;
       return detail;
     },
     // ── Build-state helpers (A4.5) ──
