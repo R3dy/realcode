@@ -598,7 +598,8 @@ export function getEngine() {
     getTraceEvents(runId: string): TraceEvent[] {
       const state = this.getBuildState(runId);
       const events: TraceEvent[] = [];
-      for (const s of state?.stories ?? []) {
+      const stories = state?.stories ?? [];
+      for (const s of stories) {
         // Story-level stage events (status transitions).
         if (s.started_at) {
           events.push({
@@ -618,13 +619,13 @@ export function getEngine() {
             stage: "build",
             agent: "build_worker",
             content: summarizeOutput(s.worker_output) || `worker dispatched for story ${s.story_id}`,
-            timestamp: s.started_at ?? state.started_at,
+            timestamp: s.started_at ?? state!.started_at,
             story_id: s.story_id,
             role: "build_worker",
             tokens: s.worker_tokens ?? 0,
             cost_usd: s.worker_cost_usd ?? 0,
           });
-          events.push(...toolCallEvents(s.worker_output, "build_worker", s.story_id, s.started_at ?? state.started_at));
+          events.push(...toolCallEvents(s.worker_output, "build_worker", s.story_id, s.started_at ?? state!.started_at));
         }
         if (s.validator_output || s.validator_tokens || s.validator_cost_usd) {
           events.push({
@@ -632,13 +633,13 @@ export function getEngine() {
             stage: "build",
             agent: "build_validator",
             content: summarizeOutput(s.validator_output) || `validator dispatched for story ${s.story_id}`,
-            timestamp: s.completed_at ?? s.started_at ?? state.started_at,
+            timestamp: s.completed_at ?? s.started_at ?? state!.started_at,
             story_id: s.story_id,
             role: "build_validator",
             tokens: s.validator_tokens ?? 0,
             cost_usd: s.validator_cost_usd ?? 0,
           });
-          events.push(...toolCallEvents(s.validator_output, "build_validator", s.story_id, s.completed_at ?? s.started_at ?? state.started_at));
+          events.push(...toolCallEvents(s.validator_output, "build_validator", s.story_id, s.completed_at ?? s.started_at ?? state!.started_at));
         }
       }
       // Append live (non-build stage) trace events from live.json (A11.2).
