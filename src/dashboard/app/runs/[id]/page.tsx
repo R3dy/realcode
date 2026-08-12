@@ -11,9 +11,14 @@ import {
   Terminal,
   X,
   Coins,
+  Code2,
 } from "lucide-react";
 import { Button, Badge, Card, Skeleton, cn, RUN_STATUS_META } from "@/components/ui";
 import { StageStepper } from "@/components/StageStepper";
+import { StoryProgress } from "@/components/StoryProgress";
+import { ContainerGrid } from "@/components/ContainerGrid";
+import { ContainerLogViewer } from "@/components/ContainerLogViewer";
+import { LiveTraceStream } from "@/components/LiveTraceStream";
 import {
   fetchRunDetail,
   deleteRun,
@@ -60,6 +65,13 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [showRawBuild, setShowRawBuild] = useState(false);
+  const [selectedContainer, setSelectedContainer] = useState<{
+    container_id: string;
+    name: string;
+    role: string;
+    story_id: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     const detail = await fetchRunDetail(params.id);
@@ -80,6 +92,10 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
     setDeleteError(null);
     try {
       const isActive = data ? ACTIVE_STATUSES.has(data.run.status) : false;
+      // Force-delete active runs (the user has been warned in the modal —
+      // including the build-loop warning when containers are still running).
+      // The route's 409 gates (active + build-loop) only fire for programmatic
+      // non-force callers.
       const res = await deleteRun(params.id, isActive);
       if ("deleted" in res) {
         router.push("/");
@@ -115,6 +131,22 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
   const isActive = ACTIVE_STATUSES.has(run.status);
   const costPct = run.cap_usd > 0 ? Math.min(100, (run.spent_usd / run.cap_usd) * 100) : 0;
   const overCap = run.spent_usd >= run.cap_usd;
+
+  // Build Stage Detail section: shown when the build stage is active or has
+  // produced an artifact (or build-state.json exists). The new components are
+  // ADDITIVE — they replace nothing; the existing per-stage build card stays
+  // but gains a "View raw artifact" toggle when build_state is present.
+  const buildState = (data as RunDetailResponse & { build_state?: unknown }).build_state;
+  const buildStageActive = stages.build === "running";
+  const showBuildDetail = buildStageActive || Boolean(artifacts.build) || Boolean(buildState);
+  const hasRunningBuildContainers = Boolean(
+    buildState &&
+      typeof buildState === "object" &&
+      Array.isArray((buildState as { stories?: Array<{ status?: string }> }).stories) &&
+      (buildState as { stories: Array<{ status?: string }> }).stories.some(
+        (s) => s.status === "building" || s.status === "validating",
+      ),
+  );
 
   // Build stages array for StageStepper
   const stepperStages = STAGE_ORDER.map((name) => ({
@@ -183,6 +215,8 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
           const status = stages[stageName];
           const artifact = artifacts[stageName];
           const tone = DETAIL_STATUS_TONE[status];
+          const isBuildStage = stageName === "build";
+          const collapseArtifact = isBuildStage && showBuildDetail && !showRawBuild;
           return (
             <Card key={stageName} className="p-4">
               <div className="mb-2 flex items-center justify-between">
@@ -193,9 +227,23 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
                   <Badge tone={tone}>
                     {status === "not-reached" ? "not reached" : status}
                   </Badge>
+                  {isBuildStage && showBuildDetail && (
+                    <button
+                      type="button"
+                      onClick={() => setShowRawBuild((v) => !v)}
+                      className="ml-2 inline-flex items-center gap-1 rounded-md border border-ink-700 bg-ink-800 px-2 py-0.5 font-mono text-[11px] text-ink-300 transition-colors hover:bg-ink-700"
+                    >
+                      <Code2 className="h-3 w-3" />
+                      {showRawBuild ? "hide raw" : "view raw artifact"}
+                    </button>
+                  )}
                 </div>
               </div>
-              {artifact ? (
+              {collapseArtifact ? (
+                <p className="text-xs text-ink-600">
+                  Build stage detail shown below. Toggle “view raw artifact” to inspect the raw JSON.
+                </p>
+              ) : artifact ? (
                 <pre className="max-h-[400px] overflow-auto rounded-lg border border-ink-700/40 bg-[#0a0b12] p-3 font-mono text-xs text-ink-300">
                   {JSON.stringify(artifact, null, 2)}
                 </pre>
@@ -210,6 +258,34 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
           );
         })}
       </div>
+
+      {/* Build Stage Detail section (A4.5 — mission-control visibility) */}
+      {showBuildDetail && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <StoryProgress runId={params.id} buildActive={buildStageActive} />
+            <ContainerGrid
+              runId={params.id}
+              buildActive={buildStageActive}
+              selectedCid={selectedContainer?.container_id ?? null}
+              onSelect={(c) =>
+                setSelectedContainer({
+                  container_id: c.container_id,
+                  name: c.name,
+                  role: c.role,
+                  story_id: c.story_id,
+                })
+              }
+            />
+          </div>
+          <LiveTraceStream runId={params.id} buildActive={buildStageActive} />
+          <ContainerLogViewer
+            runId={params.id}
+            container={selectedContainer}
+            buildActive={buildStageActive}
+          />
+        </div>
+      )}
 
       {/* Delete confirmation modal (inline-replicating NewRunDialog pattern) */}
       <AnimatePresence>
@@ -265,6 +341,13 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
                   <div className="rounded-lg border border-status-run/30 bg-status-run/5 px-3 py-2 text-xs text-status-run">
                     ⚠ This run is still active. Deleting it will not stop the engine
                     from processing it. Consider pausing first.
+                  </div>
+                )}
+                {hasRunningBuildContainers && (
+                  <div className="rounded-lg border border-status-fail/30 bg-status-fail/5 px-3 py-2 text-xs text-status-fail">
+                    ⚠ Build loop has running containers. Deleting mid-loop orphans
+                    them against a removed workspace. Use force-delete to tear them
+                    down first.
                   </div>
                 )}
                 {deleteError && (

@@ -40,6 +40,19 @@ export async function DELETE(
   const isActive = ACTIVE_STATUSES.has(run.status);
   const force = new URL(request.url).searchParams.get("force") === "1";
 
+  // Build-loop gate (A4.5 — checked FIRST so the operator gets the specific
+  // "running containers" message): if build-state.json shows stories still
+  // building or validating, block delete unless ?force=1 (INV-6 — deleting a
+  // run mid-loop would orphan running containers against a removed workspace).
+  // ?force=1 tears down containers via deterministic names (owned by A4.6's
+  // sandbox-runner integration); A4.5 only adds the 409 gate + pass-through.
+  if (engine.hasRunningBuildContainers(params.id) && !force) {
+    return NextResponse.json(
+      { error: "build loop has running containers", status: run.status },
+      { status: 409 },
+    );
+  }
+
   if (isActive && !force) {
     return NextResponse.json(
       { error: "run is active", status: run.status },
