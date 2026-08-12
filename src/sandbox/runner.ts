@@ -198,10 +198,8 @@ export class SandboxRunner {
     // AgentStageRunner dispatching frame/discover/plan/spec/ship), omit both
     // flags so those call sites keep working unchanged.
     let cidFile: string | null = null;
-    if (opts.runId && opts.storyId && opts.containerRole && opts.containerAttempt !== undefined) {
-      const sanitizedStoryId = opts.storyId.replace(/\./g, "-");
-      const sanitizedRunId = opts.runId.replace(/\./g, "-");
-      const containerName = `realcode-${sanitizedRunId}-${sanitizedStoryId}-${opts.containerRole}-${opts.containerAttempt}`;
+    const containerName = SandboxRunner.buildContainerName(opts);
+    if (containerName) {
       args.push("--name", containerName);
       try {
         const cidDir = fs.mkdtempSync(path.join(os.tmpdir(), "realcode-cid-"));
@@ -313,6 +311,28 @@ export class SandboxRunner {
       }
     }
     return events;
+  }
+
+  /**
+   * Build the deterministic `--name` value for a per-story sandbox container:
+   * `realcode-<runId>-<storyId>-<role>-<attempt>` with dots → dashes so the
+   * value is a valid Docker container name. Returns `null` when ANY of the
+   * four identity fields is missing — the non-build-dispatch backward-compat
+   * path (e.g. AgentStageRunner dispatching frame/discover/plan/spec/ship
+   * omits --name + --cidfile).
+   *
+   * Deterministic naming is what A4.5/A4.6's force-delete teardown uses to
+   * `docker rm -f` running containers before removing the workspace (INV-6)
+   * — it reconstructs the name from run_id + story_id + role + attempt without
+   * a DB lookup.
+   */
+  static buildContainerName(opts: SandboxOptions): string | null {
+    if (!opts.runId || !opts.storyId || !opts.containerRole || opts.containerAttempt === undefined) {
+      return null;
+    }
+    const sanitizedRunId = opts.runId.replace(/\./g, "-");
+    const sanitizedStoryId = opts.storyId.replace(/\./g, "-");
+    return `realcode-${sanitizedRunId}-${sanitizedStoryId}-${opts.containerRole}-${opts.containerAttempt}`;
   }
 
   static extractTokenUsage(events: unknown[]): { prompt_tokens: number; completion_tokens: number; total_tokens: number; estimated_cost_usd: number } {
