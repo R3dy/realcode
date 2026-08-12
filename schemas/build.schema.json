@@ -163,6 +163,66 @@
                 "additionalProperties": false
               },
               "default": []
+            },
+            "stories": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "story_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "done",
+                      "failed",
+                      "escalated"
+                    ]
+                  },
+                  "retry_count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "worker_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "validator_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "worker_cost_usd": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "validator_cost_usd": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "test_passed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "test_failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "story_id",
+                  "status",
+                  "retry_count",
+                  "worker_tokens",
+                  "validator_tokens",
+                  "worker_cost_usd",
+                  "validator_cost_usd",
+                  "test_passed",
+                  "test_failed"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "required": [

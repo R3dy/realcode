@@ -20,11 +20,24 @@ export const Escalation = z.object({
   reason: z.string().min(1),
 });
 
+export const StoryBuildResult = z.object({
+  story_id: z.string().min(1),
+  status: z.enum(["done", "failed", "escalated"]),
+  retry_count: z.number().int().nonnegative(),
+  worker_tokens: z.number().int().nonnegative(),
+  validator_tokens: z.number().int().nonnegative(),
+  worker_cost_usd: z.number().nonnegative(),
+  validator_cost_usd: z.number().nonnegative(),
+  test_passed: z.number().int().nonnegative(),
+  test_failed: z.number().int().nonnegative(),
+});
+
 export const BuildArtifact = z.object({
   repo_path: z.string().min(1, "repo path required"),
   test_results: TestResults,
   prs_merged: z.array(PrMerged).default([]),
   escalations: z.array(Escalation).default([]),
+  stories: z.array(StoryBuildResult).optional(),
 });
 
 export const BuildOutput = StageOutputBase.extend({
@@ -37,5 +50,6 @@ export const BuildOutput = StageOutputBase.extend({
 
 export type BuildOutput = z.infer<typeof BuildOutput>;
 export type BuildArtifact = z.infer<typeof BuildArtifact>;
+export type StoryBuildResult = z.infer<typeof StoryBuildResult>;
 
 export const buildJsonSchema = zodToJsonSchema(BuildOutput, "BuildOutput");

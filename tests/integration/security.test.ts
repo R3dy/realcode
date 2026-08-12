@@ -83,7 +83,12 @@ describe("Security: tool allowlist enforcement", () => {
   it("every AgentSpec declares a non-empty tool_allowlist", () => {
     const graph = loadStageGraph(GRAPH_PATH);
     for (const stage of graph.stages) {
-      const spec = loadAgentSpec(path.resolve(REPO_ROOT, stage.agent_spec));
+      // agent_spec is optional (inner-loop stages use worker_spec/validator_spec).
+      // At A4.1 every stage still has agent_spec; load it (or fall back to
+      // worker_spec when a stage has been flipped to inner-loop mode).
+      const specPath = stage.agent_spec ?? stage.worker_spec;
+      if (!specPath) continue;
+      const spec = loadAgentSpec(path.resolve(REPO_ROOT, specPath));
       expect(spec.tool_allowlist.length).toBeGreaterThan(0);
       expect(spec.tool_allowlist).toContain("Read");
       expect(spec.tool_allowlist).toContain("Write");
@@ -93,7 +98,9 @@ describe("Security: tool allowlist enforcement", () => {
   it("the build stage includes Edit + Bash (the worker needs code execution)", () => {
     const graph = loadStageGraph(GRAPH_PATH);
     const buildStage = graph.stages.find((s) => s.id === "build")!;
-    const spec = loadAgentSpec(path.resolve(REPO_ROOT, buildStage.agent_spec));
+    // At A4.1 the build stage still has agent_spec (the flip is A4.4)
+    const specPath = buildStage.agent_spec ?? buildStage.worker_spec!;
+    const spec = loadAgentSpec(path.resolve(REPO_ROOT, specPath));
     expect(spec.tool_allowlist).toContain("Edit");
     expect(spec.tool_allowlist).toContain("Bash");
   });
@@ -101,8 +108,27 @@ describe("Security: tool allowlist enforcement", () => {
   it("the frame stage does NOT include WebFetch (no network egress for framing)", () => {
     const graph = loadStageGraph(GRAPH_PATH);
     const frameStage = graph.stages.find((s) => s.id === "frame")!;
-    const spec = loadAgentSpec(path.resolve(REPO_ROOT, frameStage.agent_spec));
+    const spec = loadAgentSpec(path.resolve(REPO_ROOT, frameStage.agent_spec!));
     expect(spec.tool_allowlist).not.toContain("WebFetch");
+  });
+
+  it("every stage satisfies the XOR rule (agent_spec OR inner_loop triad)", () => {
+    const graph = loadStageGraph(GRAPH_PATH);
+    for (const stage of graph.stages) {
+      const hasAgentSpec = stage.agent_spec !== undefined;
+      const hasInnerLoop = stage.inner_loop !== undefined;
+      const hasWorkerSpec = stage.worker_spec !== undefined;
+      const hasValidatorSpec = stage.validator_spec !== undefined;
+      const hasTriad = hasInnerLoop && hasWorkerSpec && hasValidatorSpec;
+      // Cannot have both agent_spec and the complete inner_loop triad
+      expect(hasAgentSpec && hasTriad).toBe(false);
+      // Must have at least one of agent_spec or inner_loop
+      expect(hasAgentSpec || hasInnerLoop).toBe(true);
+    }
+    // At A4.1 the build stage has agent_spec + a dormant inner_loop (no worker/validator specs)
+    const buildStage = graph.stages.find((s) => s.id === "build")!;
+    expect(buildStage.agent_spec).toBeDefined();
+    expect(buildStage.worker_spec).toBeUndefined();
   });
 });
 

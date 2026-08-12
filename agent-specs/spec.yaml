@@ -35,7 +35,16 @@ system_prompt: |
       "epics_md": "...full epics.md content...",
       "backlog_md": "...full ordered backlog.md content...",
       "dependency_graph": "...text dependency graph, acyclic...",
-      "story_count": 12
+      "story_count": 12,
+      "stories": [
+        {
+          "id": "3.1",
+          "title": "Story title",
+          "epic": "Epic 3",
+          "acceptance_criteria": ["criterion 1", "criterion 2"],
+          "depends_on": ["3.0"]
+        }
+      ]
     }
   }
   </artifact>
@@ -52,6 +61,11 @@ system_prompt: |
       strings.
     - artifact.story_count: positive integer, MUST equal the number of stories in
       backlog_md.
+    - artifact.stories: a structured array of story objects, one per story in the
+      backlog. Each story has id (string), title (string), epic (string, may be
+      empty), acceptance_criteria (array of non-empty strings, at least 1),
+      depends_on (array of story IDs, may be empty). The length of stories MUST
+      equal story_count.
 
   Emit your final result as a JSON object wrapped in <artifact>...</artifact> tags.
   Do NOT wrap it in markdown code fences (no ```json ... ```). Do NOT add prose

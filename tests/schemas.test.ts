@@ -136,7 +136,10 @@ describe("SpecOutput schema", () => {
         epics_md: "# Epics",
         backlog_md: "# Backlog",
         dependency_graph: "M0 -> M1 -> M2",
-        story_count: 10,
+        story_count: 1,
+        stories: [
+          { id: "3.1", title: "Story 3.1", epic: "Epic 3", acceptance_criteria: ["criterion 1"], depends_on: [] },
+        ],
       },
     });
     expect(valid.success).toBe(true);
@@ -152,6 +155,7 @@ describe("SpecOutput schema", () => {
         backlog_md: "# Backlog",
         dependency_graph: "M0 -> M1",
         story_count: 0,
+        stories: [],
       },
     });
     expect(invalid.success).toBe(false);

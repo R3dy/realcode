@@ -65,6 +65,16 @@ const STAGE_ARTIFACTS: Record<string, Record<string, unknown>> = {
       backlog_md: "# Backlog\n\n1. E1.1: Login\n2. E1.2: Signup\n3. E2.1: Dashboard\n4. E2.2: Charts\n5. E3.1: Add transaction\n6. E3.2: Categorize\n7. E3.3: Import\n8. E3.4: Export",
       dependency_graph: "E1.1 -> E1.2 -> E2.1 -> E2.2 -> E3.1 -> E3.2 -> E3.3 -> E3.4",
       story_count: 8,
+      stories: [
+        { id: "E1.1", title: "Login", epic: "E1: Auth", acceptance_criteria: ["user can log in"], depends_on: [] },
+        { id: "E1.2", title: "Signup", epic: "E1: Auth", acceptance_criteria: ["user can sign up"], depends_on: ["E1.1"] },
+        { id: "E2.1", title: "Dashboard", epic: "E2: Dashboard", acceptance_criteria: ["dashboard renders"], depends_on: ["E1.2"] },
+        { id: "E2.2", title: "Charts", epic: "E2: Dashboard", acceptance_criteria: ["charts render"], depends_on: ["E2.1"] },
+        { id: "E3.1", title: "Add transaction", epic: "E3: Transactions", acceptance_criteria: ["can add a transaction"], depends_on: ["E2.1"] },
+        { id: "E3.2", title: "Categorize", epic: "E3: Transactions", acceptance_criteria: ["can categorize"], depends_on: ["E3.1"] },
+        { id: "E3.3", title: "Import", epic: "E3: Transactions", acceptance_criteria: ["can import"], depends_on: ["E3.1"] },
+        { id: "E3.4", title: "Export", epic: "E3: Transactions", acceptance_criteria: ["can export"], depends_on: ["E3.1"] },
+      ],
     },
   },
   build: {
