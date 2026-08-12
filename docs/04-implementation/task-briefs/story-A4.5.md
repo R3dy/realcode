@@ -155,4 +155,32 @@ Before this story: A4.1 (Contracts), A4.2 (Engine), A4.3 (Sandbox), A4.4 (Agent 
 
 <!-- Worker fills this section. Append below the line — do not delete existing content. -->
 
-*(to be filled by the Worker on completion)*
+**result:** success
+**failure_type:** *(omit if success)*
+**pr_url:** https://github.com/R3dy/realcode/pull/9
+**pr_number:** 9
+**branch:** story/A4.5-dashboard-mission-control
+**base:** issue/4-multi-container-build-loop
+**commits:**
+- 4c1715d feat(A4.5): dashboard mission-control UI — StoryProgress, ContainerGrid, LiveTraceStream, ContainerLogViewer + 4 API endpoints (#4)
+**test_output:** passed (194 tests + 6 e2e skipped; 18 test files passed | 1 skipped; 19 total. 167 baseline + 27 new = 194. The 6 e2e tests are `describe.skip`'d pre-A4.6 — fixed by A4.6.)
+**lint_output:** clean (0 errors; 6 pre-existing warnings — none in A4.5 files: `WorkItem`/`cost_cap_usd`/`TriangleAlert`/`presentArtifacts`/`ChildProcess` + build-loop eslint-disable)
+**typecheck:** clean (root `tsc --noEmit` exits 0; dashboard `tsc --noEmit -p src/dashboard/tsconfig.json` exits 0)
+
+**notes for the orchestrator / reviewer:**
+
+1. **Endpoint naming `/build-state` vs plan's `/stories`:** The plan §9 A4.5 criterion names the endpoint `/stories`; the dispatch instructs `/build-state` returning the full build-state.json (so the dashboard can read `started_at` / `wall_clock_deadline_ms` / `paused` / `pause_reason` too). The dispatch path wins (literal orchestrator instruction + returns a superset of the plan's payload). Both describe the same data.
+
+2. **Trace endpoint MVP scope (per dispatch):** The SSE endpoint synthesizes events from `build-state.json` (story status transitions + per-story worker/validator output/token/cost). The plan's Phoenix-GraphQL polling (§4.11) is NOT implemented in A4.5 — Phoenix is not guaranteed to be running in the dashboard environment, and the dispatch explicitly chose the simpler MVP ("returns the projected trace events from the run's stage artifacts … If no trace data exists, it returns an empty stream"). A post-MVP enhancement can swap in Phoenix polling; the SSE shape (`trace_event` / `story_update` / `done`) is forward-compatible.
+
+3. **`containers[]` fallback:** A4.2's build-state.json populates `worker_container_id` / `validator_container_id` per story but leaves the explicit `containers[]` array `[]` (the per-sandbox container-id + log-path wiring is owned by A4.3's build-loop integration). The `/containers` endpoint synthesizes views from the per-story IDs so the grid is non-empty once A4.3 populates them, and gracefully returns `[]` when no container data exists. `/containers/[cid]/logs` resolves `log_path` through the explicit `containers[]` first, then synthesizes a `<story>-<role>-0.log` path from the per-story container IDs as a fallback.
+
+4. **Delete-run 409 ordering:** The build-loop gate is checked BEFORE the active-run gate so the operator gets the specific "build loop has running containers" message rather than the generic "run is active". `?force=1` bypasses both gates. A4.6 owns the actual `docker rm -f` teardown via deterministic container names (`realcode-<run_id>-<story_id>-<role>-<attempt>`) — A4.5 only adds the 409 gate + pass-through; the dashboard engine module does NOT shell out to Docker (that boundary is enforced by A4.3/A4.6's sandbox-runner).
+
+5. **Vitest alias repointed:** `vitest.config.ts` `alias['@']` changed from `/src` to `/src/dashboard` so the new route tests resolve `@/lib/engine` the same way the dashboard's own tsconfig does. Grep-verified no non-dashboard file (tests/ or src/) imports `@/`, so no existing test breaks (the full suite: 194 passed, 6 skipped). The root `tsc --noEmit` excludes `src/dashboard` and uses the root `@/* → ./src/*` path — unaffected.
+
+6. **`docs/02-planning/ux-design.md` created (additive):** The plan §9 A4.5 criterion requires the Component Inventory to gain entries for the 4 new components, but the file did not exist in this repo. Created a minimal additive `ux-design.md` with the full Component Inventory (existing + 4 new components) + the as-built design-token table. No existing planning doc was modified.
+
+7. **Run-detail page regression:** The page still renders correctly for runs that haven't reached the build stage — the Build Stage Detail section is conditional (`stages.build === "running"` OR `artifacts.build` present OR `build_state` present). `dashboard-detail.test.ts` (14 existing tests) passes unchanged; `getRunDetail()` returns `build_state: undefined` when `build-state.json` is absent, so existing destructuring `{ run, stages, artifacts }` is unaffected.
+
+8. **All 4 new components are `"use client"`** (interactive: polling, SSE, scroll, selection). The API routes are server-component route handlers (no `"use client"`). The SSE endpoint sets `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform`, `Connection: keep-alive`, `X-Accel-Buffering: no` (the latter defeats nginx buffering so the stream flushes live).
