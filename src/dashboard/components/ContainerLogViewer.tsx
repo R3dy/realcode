@@ -12,11 +12,11 @@ interface LogsResponse {
 export function ContainerLogViewer({
   runId,
   container,
-  buildActive,
+  runActive,
 }: {
   runId: string;
   container: { container_id: string; name: string; role: string; story_id: string } | null;
-  buildActive: boolean;
+  runActive: boolean;
 }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -51,12 +51,12 @@ export function ContainerLogViewer({
     fetchLogs();
   }, [fetchLogs]);
 
-  // Poll while the build is active and a container is selected.
+  // Poll while the run is active and a container is selected.
   useEffect(() => {
-    if (!container || !buildActive) return;
+    if (!container || !runActive) return;
     const id = setInterval(fetchLogs, 3000);
     return () => clearInterval(id);
-  }, [container, buildActive, fetchLogs]);
+  }, [container, runActive, fetchLogs]);
 
   // Auto-scroll to bottom on new text (unless the user has scrolled up).
   useEffect(() => {
