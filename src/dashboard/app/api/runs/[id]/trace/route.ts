@@ -3,7 +3,6 @@ import { getEngine, type TraceEvent } from "@/lib/engine";
 export const dynamic = "force-dynamic";
 
 const TERMINAL_RUN_STATUSES = new Set([
-  "built",
   "shipped",
   "escalated",
   "framing_failed",
