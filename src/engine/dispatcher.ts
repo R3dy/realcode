@@ -4,6 +4,7 @@ import type { StageGraph, StageEntry } from "./stage-graph.js";
 import { findStageForStatus, applyTransition } from "./stage-graph.js";
 import type { Queue, Storage, WorkItem } from "../backend/types.js";
 import { startStageSpan, endSpan } from "./tracing.js";
+import { writeLiveState, readLiveState, flushLiveEvents } from "./live-state.js";
 
 const MISSION_CONTROL_ROOT = process.env.MISSION_CONTROL_ROOT || "/home/royce/mission-control";
 const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.-]+)\s*\]/i;
@@ -216,6 +217,26 @@ export class Engine {
       }
 
       const stageSpan = startStageSpan(item.run_id, stage.id, "");
+      // A11.1: stage-start live.json write (non-build stages only — the build
+      // path stays byte-identical, see §4.2 boundary). Wrapped in try/catch —
+      // a live-state write failure must NOT prevent the stage from running.
+      if (!stage.inner_loop) {
+        try {
+          writeLiveState(item.run_id, {
+            run_id: item.run_id,
+            stage: stage.id,
+            status: "running",
+            started_at: Date.now(),
+            updated_at: Date.now(),
+            container: null,
+            events: [],
+            tokens_total: 0,
+            cost_usd: 0,
+          });
+        } catch (err) {
+          console.warn(`[dispatcher] live-state start write failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       try {
         let result;
         if (stage.inner_loop && stage.worker_spec) {
@@ -250,6 +271,25 @@ export class Engine {
           }, null, 2),
         );
 
+        // A11.1: stage-end live.json write (success path, non-build stages
+        // only). Flushes any coalesced trace events so the last event of the
+        // stage is not dropped by the 250ms throttle. Wrapped in try/catch —
+        // a live-state write failure must NOT fail the stage.
+        if (!stage.inner_loop) {
+          try {
+            const current = readLiveState(item.run_id);
+            writeLiveState(item.run_id, {
+              stage: stage.id,
+              status: "completed",
+              updated_at: Date.now(),
+              container: current?.container ? { ...current.container, status: "exited" } : null,
+            });
+            flushLiveEvents(item.run_id);
+          } catch (err) {
+            console.warn(`[dispatcher] live-state end write failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
         // Apply the transition: item.status is the `from` state, result.output_status is the gate verdict (the `on` event)
         let newStatus = applyTransition(this.graph, stage.id, item.status, result.output_status);
         if (!newStatus) {
@@ -270,6 +310,28 @@ export class Engine {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         endSpan(stageSpan, false, msg);
+        // A11.1 (1-C4): catch-path live.json rewrite with status:"failed" +
+        // the failure message, BEFORE the work item is released. Wrapped in
+        // try/catch — a live-state write failure here MUST NOT mask the
+        // original error or crash the dispatch cycle (INV-4 best-effort).
+        if (!stage.inner_loop) {
+          try {
+            const prior = readLiveState(item.run_id);
+            writeLiveState(item.run_id, {
+              stage: stage.id,
+              status: "failed",
+              updated_at: Date.now(),
+              failure_message: msg,
+              container: prior?.container ? { ...prior.container, status: "failed" } : null,
+              events: prior?.events ?? [],
+              tokens_total: prior?.tokens_total ?? 0,
+              cost_usd: prior?.cost_usd ?? 0,
+            });
+            flushLiveEvents(item.run_id);
+          } catch (liveErr) {
+            console.warn(`[dispatcher] live-state failure write failed (non-fatal): ${liveErr instanceof Error ? liveErr.message : String(liveErr)}`);
+          }
+        }
         this.queue.release(item.id, "escalated");
         this.setRunStatus(run, "escalated");
         dispatched++;
