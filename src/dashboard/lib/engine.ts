@@ -538,6 +538,22 @@ export function getEngine() {
       return views;
     },
     getContainerLogs(runId: string, cid: string, tail?: number): { text: string; log_path: string } | null {
+      // Live (non-build stage) container check runs FIRST (A11.2, 1-C6): match
+      // cid against live.container.container_id or live.container.name.
+      const live = this.getLiveState(runId);
+      if (live && live.container && (live.container.container_id === cid || live.container.name === cid)) {
+        const livePath = live.container.log_path;
+        const liveAbs = path.join(DATA_DIR, livePath);
+        if (!fs.existsSync(liveAbs)) return { text: "", log_path: livePath };
+        const liveText = fs.readFileSync(liveAbs, "utf8");
+        if (tail && tail > 0) {
+          let lines = liveText.split(/\r?\n/);
+          if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
+          return { text: lines.slice(Math.max(0, lines.length - tail)).join("\n"), log_path: livePath };
+        }
+        return { text: liveText, log_path: livePath };
+      }
+      // Fall through to the existing build_state resolution.
       const state = this.getBuildState(runId);
       if (!state) return null;
       // Resolve log_path through containers[] (match container_id or role+story).
