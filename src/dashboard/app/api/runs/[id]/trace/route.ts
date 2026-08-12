@@ -2,6 +2,11 @@ import { getEngine, type TraceEvent } from "@/lib/engine";
 
 export const dynamic = "force-dynamic";
 
+// Runs that terminate the SSE stream. `built` is deliberately NOT in this set
+// (A11.3, 1-C3) so the ship stage keeps streaming — no connect/close flicker at
+// the build→ship transition. `ship_failed` and all `*_failed` remain terminal so
+// a failed ship still closes the stream. (Not exported: Next.js route files only
+// allow valid Route export fields, so 1-C3 is tested via route behavior instead.)
 const TERMINAL_RUN_STATUSES = new Set([
   "shipped",
   "escalated",
