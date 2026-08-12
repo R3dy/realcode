@@ -109,6 +109,44 @@ describe("engine.getRunDetail + deleteRun", () => {
     expect(getEngine().getRunDetail("run_nonexistent")).toBeNull();
   });
 
+  it("A11.2 getRunDetail includes live_state AND build_state when both exist (AC #9)", async () => {
+    const { getEngine } = await importEngine();
+    makeRun("run_both", "specified", DATA_DIR);
+    const runDir = path.join(DATA_DIR, "runs", "run_both");
+    fs.writeFileSync(
+      path.join(runDir, "build-state.json"),
+      JSON.stringify({
+        run_id: "run_both",
+        started_at: 1700000000000,
+        wall_clock_deadline_ms: 1700001200000,
+        paused: false,
+        pause_reason: null,
+        stories: [],
+        containers: [],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(runDir, "live.json"),
+      JSON.stringify({
+        run_id: "run_both",
+        stage: "discover",
+        status: "running",
+        started_at: 1700000000000,
+        updated_at: 1700000100000,
+        container: { container_id: "cid_live", name: "c", role: "discover", status: "running", started_at: 1700000000000, log_path: "runs/run_both/x.log" },
+        events: [],
+        tokens_total: 0,
+        cost_usd: 0,
+      }),
+    );
+    const detail = getEngine().getRunDetail("run_both");
+    expect(detail).not.toBeNull();
+    expect(detail!.build_state).toBeDefined();
+    expect(detail!.live_state).toBeDefined();
+    expect(detail!.live_state!.stage).toBe("discover");
+    expect(detail!.live_state!.container!.container_id).toBe("cid_live");
+  });
+
   it("getRunDetail returns run + stages + artifacts for a shipped run", async () => {
     const { getEngine } = await importEngine();
     makeRun("run_shipped", "shipped", ["frame", "discover", "plan", "spec", "build", "ship"]);
