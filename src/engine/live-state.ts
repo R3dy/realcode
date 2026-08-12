@@ -81,7 +81,10 @@ function emptyState(runId: string): LiveState {
  * Missing/corrupt file → starts from the empty state. Never throws — live
  * state is best-effort observability, a failure must never crash a stage.
  */
-export function writeLiveState(runId: string, partial: Partial<LiveState>): void {
+export function writeLiveState(
+  runId: string,
+  partial: Omit<Partial<LiveState>, "container"> & { container?: Partial<LiveContainer> | null },
+): void {
   const fp = liveStatePath(runId);
   let state: LiveState;
   try {
@@ -90,12 +93,20 @@ export function writeLiveState(runId: string, partial: Partial<LiveState>): void
   } catch {
     state = emptyState(runId);
   }
-  const next: LiveState = { ...state, ...partial, run_id: runId, updated_at: Date.now() };
+  const next = { ...state, ...partial, run_id: runId, updated_at: Date.now() } as LiveState & { container?: Partial<LiveContainer> | null };
   if (partial.container !== undefined) {
     next.container = partial.container === null
       ? null
-      : { ...(state.container ?? ({} as LiveContainer)), ...partial.container };
+      : {
+          container_id: partial.container.container_id !== undefined ? partial.container.container_id : state.container?.container_id ?? null,
+          name: partial.container.name !== undefined ? partial.container.name : state.container?.name ?? "",
+          role: partial.container.role !== undefined ? partial.container.role : state.container?.role ?? "",
+          status: partial.container.status !== undefined ? partial.container.status : state.container?.status ?? "",
+          started_at: partial.container.started_at !== undefined ? partial.container.started_at : state.container?.started_at ?? Date.now(),
+          log_path: partial.container.log_path !== undefined ? partial.container.log_path : state.container?.log_path ?? "",
+        };
   }
+
   try {
     fs.mkdirSync(path.dirname(fp), { recursive: true });
   } catch {
