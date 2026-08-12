@@ -152,3 +152,76 @@ exit 0
     }
   });
 });
+
+describe("sandbox/runner: stage-sentinel container naming (A11.1)", () => {
+  it("buildContainerName with storyId 'stage' produces realcode-<runId>-<role>-<attempt> (no story segment)", () => {
+    const name = SandboxRunner.buildContainerName({
+      workspacePath: "/data/runs/r1/ws",
+      model: "m",
+      dispatchMessage: "x",
+      runId: "run_disc_001",
+      storyId: "stage",
+      containerRole: "discover",
+      containerAttempt: 0,
+      liveCapture: true,
+    });
+    expect(name).toBe("realcode-run_disc_001-discover-0");
+  });
+
+  it("sanitizes dots in runId for the stage-sentinel form", () => {
+    const name = SandboxRunner.buildContainerName({
+      workspacePath: "/x",
+      model: "m",
+      dispatchMessage: "x",
+      runId: "run.2026.08.12",
+      storyId: "stage",
+      containerRole: "plan",
+      containerAttempt: 1,
+      liveCapture: true,
+    });
+    expect(name).toBe("realcode-run-2026-08-12-plan-1");
+    expect(name).not.toContain(".");
+  });
+
+  it("storyId undefined + liveCapture true defaults to the stage-sentinel form", () => {
+    const name = SandboxRunner.buildContainerName({
+      workspacePath: "/x",
+      model: "m",
+      dispatchMessage: "x",
+      runId: "run_x",
+      containerRole: "spec",
+      containerAttempt: 0,
+      liveCapture: true,
+    });
+    expect(name).toBe("realcode-run_x-spec-0");
+  });
+
+  it("real-storyId branch is preserved byte-identical (realcode-<runId>-<storyId>-<role>-<attempt>)", () => {
+    const name = SandboxRunner.buildContainerName({
+      workspacePath: "/x",
+      model: "m",
+      dispatchMessage: "x",
+      runId: "run_abc",
+      storyId: "3.1",
+      containerRole: "worker",
+      containerAttempt: 0,
+    });
+    expect(name).toBe("realcode-run_abc-3-1-worker-0");
+  });
+
+  it("returns null when liveCapture is falsy AND any identity field is missing (backward-compat)", () => {
+    const base = {
+      workspacePath: "/x",
+      model: "m",
+      dispatchMessage: "x",
+      runId: "r1",
+      storyId: "s1",
+      containerRole: "worker",
+      containerAttempt: 0,
+    } as const;
+    expect(SandboxRunner.buildContainerName({ ...base, runId: undefined })).toBeNull();
+    expect(SandboxRunner.buildContainerName({ ...base, storyId: undefined })).toBeNull();
+    expect(SandboxRunner.buildContainerName({ ...base, containerRole: undefined })).toBeNull();
+    expect(SandboxRunner.buildContainerName({ ...base, containerAttempt: undefined })).toBeNull();
+  });
+});
