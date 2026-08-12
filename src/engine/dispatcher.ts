@@ -88,6 +88,7 @@ export class Engine {
     private storage: Storage,
     private runner: StageRunner,
     private dataDir: string,
+    private buildLoopRunner?: StageRunner,
   ) {}
 
   createRun(runId: string, idea: string): RunRecord {
@@ -215,7 +216,18 @@ export class Engine {
 
       const stageSpan = startStageSpan(item.run_id, stage.id, "");
       try {
-        const result = await this.runner.run(item, stage, run.workspace_path);
+        let result;
+        if (stage.inner_loop && stage.worker_spec) {
+          if (!this.buildLoopRunner) {
+            throw new Error(
+              `Stage '${stage.id}' has inner_loop but no BuildLoopRunner configured — ` +
+                `cannot dispatch. Pass a BuildLoopRunner to the Engine constructor (6th param).`,
+            );
+          }
+          result = await this.buildLoopRunner.run(item, stage, run.workspace_path);
+        } else {
+          result = await this.runner.run(item, stage, run.workspace_path);
+        }
         stageSpan.setAttributes({
           "realcode.gate_verdict": result.output_status,
           "realcode.tokens.prompt": result.token_usage.prompt_tokens,
