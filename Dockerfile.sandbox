@@ -14,21 +14,31 @@ FROM node:20-slim
 # git: opencode + anymake plugins clone from git URLs at runtime.
 # docker.io: reserved for any future sandbox-spawns-sandbox scenario (not used
 # in MVP but kept for parity with the engine image). procps: ps for debugging.
+# curl + ca-certificates: the opencode install script downloads a release
+# binary over HTTPS.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     docker.io \
     procps \
+    curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# opencode is the headless agent runner inside the sandbox. Global install so
-# it's on PATH for `opencode run --auto --format json`.
-RUN npm install -g opencode@latest
+# opencode is the headless agent runner inside the sandbox. The canonical
+# install is the install script at https://opencode.ai/install (opencode is a
+# self-contained ~180MB ELF binary, NOT an npm package — the brief's
+# `npm install -g opencode@latest` fails with a 404). --no-modify-path skips
+# shell-config edits (unnecessary in a Docker image); we add the install dir
+# to PATH via ENV below.
+RUN curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path
 
 # opencode reads HOME + XDG_CONFIG_HOME to locate its config dir. The engine
 # passes -e HOME=/root -e XDG_CONFIG_HOME=/root/.config at spawn time; mirror
 # the HOME default here so a manual `docker run -it realcode-sandbox` also
-# finds the mounted config.
+# finds the mounted config. The install script put the binary at
+# /root/.opencode/bin/opencode — add that to PATH.
 ENV HOME=/root
+ENV PATH=/root/.opencode/bin:$PATH
 
 WORKDIR /workspace
 
