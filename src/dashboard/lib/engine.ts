@@ -26,10 +26,68 @@ export interface ControlDoc {
 // Detail-page stage-status vocabulary (adds "not-reached" to the board's StageStatus)
 export type DetailStageStatus = StageStatus | "not-reached";
 
+// ── Build-state types (A4.5 — mission-control visibility) ──
+// Mirrors the shape produced by src/engine/build-loop.ts (A4.2). The engine
+// owns the source of truth; the dashboard only reads it. Fields are tolerant
+// (null/undefined) because the build loop writes them incrementally.
+export interface BuildStoryState {
+  story_id: string;
+  title: string;
+  status: "pending" | "building" | "validating" | "done" | "failed" | "escalated";
+  retry_count: number;
+  worker_container_id: string | null;
+  validator_container_id: string | null;
+  worker_output: Record<string, unknown> | null;
+  validator_output: Record<string, unknown> | null;
+  started_at: number | null;
+  completed_at: number | null;
+  depends_on: string[];
+  acceptance_criteria: string[];
+  worker_tokens?: number;
+  validator_tokens?: number;
+  worker_cost_usd?: number;
+  validator_cost_usd?: number;
+  test_passed?: number;
+  test_failed?: number;
+}
+
+export interface BuildContainerEntry {
+  container_id: string | null;
+  role: string;
+  story_id: string;
+  log_path: string;
+}
+
+export interface BuildState {
+  run_id: string;
+  started_at: number;
+  wall_clock_deadline_ms: number;
+  paused: boolean;
+  pause_reason: string | null;
+  stories: BuildStoryState[];
+  containers: BuildContainerEntry[];
+}
+
+// Container view returned by /api/runs/[id]/containers — merges the explicit
+// `containers[]` array with per-story worker/validator container IDs (A4.2
+// populates worker_container_id/validator_container_id; A4.3 will populate
+// the explicit containers[] array with log_path).
+export interface ContainerView {
+  container_id: string;
+  name: string;
+  story_id: string;
+  role: string;
+  status: string;
+  started_at: number | null;
+  exited_at: number | null;
+  log_path: string;
+}
+
 export interface RunDetailResponse {
   run: RunRecord;
   stages: Record<StageName, DetailStageStatus>;
   artifacts: Partial<Record<StageName, unknown>>;
+  build_state?: BuildState;
 }
 
 export class RunNotFoundError extends Error {
@@ -37,6 +95,75 @@ export class RunNotFoundError extends Error {
     super(`run not found: ${runId}`);
     this.name = "RunNotFoundError";
   }
+}
+
+// ── Trace event types (A4.5 — engine-side synthesis from build-state.json) ──
+export interface TraceEvent {
+  kind: "llm-message" | "tool-call" | "stage-event" | "error";
+  stage: string;
+  agent: string;
+  content: string;
+  timestamp?: number;
+  story_id?: string;
+  role?: string;
+  tool?: string;
+  tool_input?: string;
+  tokens?: number;
+  cost_usd?: number;
+}
+
+function summarizeOutput(output: Record<string, unknown> | null): string {
+  if (!output || typeof output !== "object") return "";
+  const a = output as Record<string, unknown>;
+  // WorkerOutput has notes/failure_description; ValidatorOutput has notes/verdict.
+  if (typeof a.notes === "string" && a.notes) return a.notes;
+  if (typeof a.failure_description === "string" && a.failure_description) return a.failure_description;
+  if (typeof a.verdict === "string") return `verdict: ${a.verdict}`;
+  if (typeof a.result === "string") return `result: ${a.result}`;
+  return "";
+}
+
+function toolCallEvents(
+  output: Record<string, unknown> | null,
+  role: string,
+  storyId: string,
+  ts: number,
+): TraceEvent[] {
+  if (!output || typeof output !== "object") return [];
+  const a = output as Record<string, unknown>;
+  const commits = Array.isArray(a.commits) ? a.commits : null;
+  const out: TraceEvent[] = [];
+  if (commits) {
+    for (const c of commits) {
+      if (c && typeof c === "object" && typeof (c as Record<string, unknown>).message === "string") {
+        out.push({
+          kind: "tool-call",
+          stage: "build",
+          agent: role,
+          tool: "git commit",
+          tool_input: String((c as Record<string, unknown>).message),
+          content: "",
+          timestamp: ts,
+          story_id: storyId,
+          role,
+        });
+      }
+    }
+  }
+  if (typeof a.test_output === "string" && a.test_output) {
+    out.push({
+      kind: "tool-call",
+      stage: "build",
+      agent: role,
+      tool: "npm test",
+      tool_input: "",
+      content: a.test_output.slice(0, 200),
+      timestamp: ts,
+      story_id: storyId,
+      role,
+    });
+  }
+  return out;
 }
 
 const DATA_DIR = process.env.REALCODE_DATA_DIR || path.resolve(process.cwd(), ".realcode-data");
@@ -283,7 +410,157 @@ export function getEngine() {
         }
       }
       const stages = deriveStageStatuses(run, presentArtifacts);
-      return { run, stages, artifacts };
+      const build_state = this.getBuildState(runId) ?? undefined;
+      const detail: RunDetailResponse = { run, stages, artifacts };
+      if (build_state) detail.build_state = build_state;
+      return detail;
+    },
+    // ── Build-state helpers (A4.5) ──
+    getBuildState(runId: string): BuildState | null {
+      const fp = path.join(RUNS_DIR, runId, "build-state.json");
+      if (!fs.existsSync(fp)) return null;
+      try {
+        return JSON.parse(fs.readFileSync(fp, "utf8")) as BuildState;
+      } catch {
+        return null;
+      }
+    },
+    listContainers(runId: string): ContainerView[] {
+      const state = this.getBuildState(runId);
+      if (!state) return [];
+      const views: ContainerView[] = [];
+      const seen = new Set<string>();
+      // 1. Explicit containers[] entries (A4.3 wiring).
+      for (const c of state.containers ?? []) {
+        if (!c.container_id) continue;
+        if (seen.has(c.container_id)) continue;
+        seen.add(c.container_id);
+        views.push({
+          container_id: c.container_id,
+          name: c.container_id,
+          story_id: c.story_id,
+          role: c.role,
+          status: "exited",
+          started_at: null,
+          exited_at: null,
+          log_path: c.log_path ?? "",
+        });
+      }
+      // 2. Per-story worker/validator container IDs (A4.2 fallback when
+      //    the explicit containers[] array is empty / pre-A4.3 wiring).
+      for (const s of state.stories ?? []) {
+        const pairs: Array<[string | null, string]> = [
+          [s.worker_container_id, "worker"],
+          [s.validator_container_id, "validator"],
+        ];
+        for (const [cid, role] of pairs) {
+          if (!cid || seen.has(cid)) continue;
+          seen.add(cid);
+          views.push({
+            container_id: cid,
+            name: cid,
+            story_id: s.story_id,
+            role,
+            status: s.status === "building" && role === "worker" ? "running"
+              : s.status === "validating" && role === "validator" ? "running"
+              : "exited",
+            started_at: s.started_at,
+            exited_at: s.completed_at,
+            log_path: "",
+          });
+        }
+      }
+      return views;
+    },
+    getContainerLogs(runId: string, cid: string, tail?: number): { text: string; log_path: string } | null {
+      const state = this.getBuildState(runId);
+      if (!state) return null;
+      // Resolve log_path through containers[] (match container_id or role+story).
+      let logPath: string | null = null;
+      for (const c of state.containers ?? []) {
+        if (c.container_id === cid || c.log_path === cid) { logPath = c.log_path || null; break; }
+      }
+      // Fallback: synthesize log_path from the per-story container IDs (A4.2
+      // wrote worker_container_id/validator_container_id but not containers[]).
+      if (!logPath) {
+        for (const s of state.stories ?? []) {
+          if (s.worker_container_id === cid) {
+            logPath = path.join("runs", runId, "containers", `${s.story_id}-worker-0.log`);
+            break;
+          }
+          if (s.validator_container_id === cid) {
+            logPath = path.join("runs", runId, "containers", `${s.story_id}-validator-0.log`);
+            break;
+          }
+        }
+      }
+      if (!logPath) return null;
+      const abs = path.join(DATA_DIR, logPath);
+      if (!fs.existsSync(abs)) return { text: "", log_path: logPath };
+      const text = fs.readFileSync(abs, "utf8");
+      if (tail && tail > 0) {
+        let lines = text.split(/\r?\n/);
+        // Drop a single trailing empty line produced by a final newline so
+        // `tail=N` returns the last N non-empty lines (matches `tail -n` UX).
+        if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
+        return { text: lines.slice(Math.max(0, lines.length - tail)).join("\n"), log_path: logPath };
+      }
+      return { text, log_path: logPath };
+    },
+    hasRunningBuildContainers(runId: string): boolean {
+      const state = this.getBuildState(runId);
+      if (!state) return false;
+      return state.stories.some((s) => s.status === "building" || s.status === "validating");
+    },
+    getTraceEvents(runId: string): TraceEvent[] {
+      const state = this.getBuildState(runId);
+      if (!state) return [];
+      const events: TraceEvent[] = [];
+      for (const s of state.stories ?? []) {
+        // Story-level stage events (status transitions).
+        if (s.started_at) {
+          events.push({
+            kind: "stage-event",
+            stage: "build",
+            agent: "orchestrator",
+            content: `story ${s.story_id} → ${s.status}`,
+            timestamp: s.started_at,
+            story_id: s.story_id,
+            role: "orchestrator",
+          });
+        }
+        // Synthesized per-story turn events from worker output + token/cost.
+        if (s.worker_output || s.worker_tokens || s.worker_cost_usd) {
+          events.push({
+            kind: "llm-message",
+            stage: "build",
+            agent: "build_worker",
+            content: summarizeOutput(s.worker_output) || `worker dispatched for story ${s.story_id}`,
+            timestamp: s.started_at ?? state.started_at,
+            story_id: s.story_id,
+            role: "build_worker",
+            tokens: s.worker_tokens ?? 0,
+            cost_usd: s.worker_cost_usd ?? 0,
+          });
+          events.push(...toolCallEvents(s.worker_output, "build_worker", s.story_id, s.started_at ?? state.started_at));
+        }
+        if (s.validator_output || s.validator_tokens || s.validator_cost_usd) {
+          events.push({
+            kind: "llm-message",
+            stage: "build",
+            agent: "build_validator",
+            content: summarizeOutput(s.validator_output) || `validator dispatched for story ${s.story_id}`,
+            timestamp: s.completed_at ?? s.started_at ?? state.started_at,
+            story_id: s.story_id,
+            role: "build_validator",
+            tokens: s.validator_tokens ?? 0,
+            cost_usd: s.validator_cost_usd ?? 0,
+          });
+          events.push(...toolCallEvents(s.validator_output, "build_validator", s.story_id, s.completed_at ?? s.started_at ?? state.started_at));
+        }
+      }
+      events.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+      return events;
     },
     deleteRun(runId: string): void {
       const runDir = path.join(RUNS_DIR, runId);
