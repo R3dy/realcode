@@ -477,11 +477,10 @@ export function getEngine() {
     },
     listContainers(runId: string): ContainerView[] {
       const state = this.getBuildState(runId);
-      if (!state) return [];
       const views: ContainerView[] = [];
       const seen = new Set<string>();
       // 1. Explicit containers[] entries (A4.3 wiring).
-      for (const c of state.containers ?? []) {
+      for (const c of state?.containers ?? []) {
         if (!c.container_id) continue;
         if (seen.has(c.container_id)) continue;
         seen.add(c.container_id);
@@ -498,7 +497,7 @@ export function getEngine() {
       }
       // 2. Per-story worker/validator container IDs (A4.2 fallback when
       //    the explicit containers[] array is empty / pre-A4.3 wiring).
-      for (const s of state.stories ?? []) {
+      for (const s of state?.stories ?? []) {
         const pairs: Array<[string | null, string]> = [
           [s.worker_container_id, "worker"],
           [s.validator_container_id, "validator"],
@@ -519,6 +518,22 @@ export function getEngine() {
             log_path: "",
           });
         }
+      }
+      // 3. Live (non-build stage) container from live.json (A11.2). Stage-level,
+      //    not story-level, so story_id is "".
+      const live = this.getLiveState(runId);
+      if (live && live.container && live.container.container_id && !seen.has(live.container.container_id)) {
+        seen.add(live.container.container_id);
+        views.push({
+          container_id: live.container.container_id,
+          name: live.container.name,
+          story_id: "",
+          role: live.container.role,
+          status: "running",
+          started_at: live.container.started_at,
+          exited_at: null,
+          log_path: live.container.log_path,
+        });
       }
       return views;
     },
