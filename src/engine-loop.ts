@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
-import { loadStageGraph, Engine } from "./engine/index.js";
+import { loadStageGraph, Engine, BuildLoopRunner } from "./engine/index.js";
 import { SQLiteQueue, FileStorage } from "./backend/index.js";
 import { SandboxRunner } from "./sandbox/index.js";
 import { AgentStageRunner } from "./agents/index.js";
@@ -24,7 +24,8 @@ const runner = new AgentStageRunner(sandbox, storage, graph, {
   localMode: false,
   repoRoot: process.cwd(),
 });
-const engine = new Engine(graph, queue, storage, runner, DATA_DIR);
+const buildLoop = new BuildLoopRunner(runner, storage, graph, queue, { repoRoot: process.cwd() });
+const engine = new Engine(graph, queue, storage, runner, DATA_DIR, buildLoop);
 
 console.log(`[realcode-engine] started`);
 console.log(`  data dir:   ${DATA_DIR}`);
