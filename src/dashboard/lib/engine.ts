@@ -579,9 +579,8 @@ export function getEngine() {
     },
     getTraceEvents(runId: string): TraceEvent[] {
       const state = this.getBuildState(runId);
-      if (!state) return [];
       const events: TraceEvent[] = [];
-      for (const s of state.stories ?? []) {
+      for (const s of state?.stories ?? []) {
         // Story-level stage events (status transitions).
         if (s.started_at) {
           events.push({
@@ -622,6 +621,29 @@ export function getEngine() {
             cost_usd: s.validator_cost_usd ?? 0,
           });
           events.push(...toolCallEvents(s.validator_output, "build_validator", s.story_id, s.completed_at ?? s.started_at ?? state.started_at));
+        }
+      }
+      // Append live (non-build stage) trace events from live.json (A11.2).
+      // Build events keep priority; live events fill the gap for non-build
+      // stages, deduped by signature `timestamp|stage|content`.
+      const live = this.getLiveState(runId);
+      if (live) {
+        const sigs = new Set(events.map((e) => `${e.timestamp}|${e.stage}|${e.content}`));
+        for (const lv of live.events ?? []) {
+          const sig = `${lv.timestamp}|${lv.stage}|${lv.content}`;
+          if (sigs.has(sig)) continue;
+          sigs.add(sig);
+          events.push({
+            kind: lv.kind as TraceEvent["kind"],
+            stage: lv.stage,
+            agent: lv.agent,
+            content: lv.content,
+            timestamp: lv.timestamp,
+            ...(lv.role !== undefined ? { role: lv.role } : {}),
+            ...(lv.tool !== undefined ? { tool: lv.tool } : {}),
+            tokens: lv.tokens ?? 0,
+            cost_usd: lv.cost_usd ?? 0,
+          });
         }
       }
       events.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
