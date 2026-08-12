@@ -6,25 +6,55 @@
 >
 > **Next action, in order:**
 >
-> **Build-stage timeout fix (2026-08-11, session 21):**
-> - run_0ba334d1 ("Redesign run detail view with tabs + live Phoenix log")
->   escalated at build: 20-min sandbox timeout, 1.27M prompt tokens burned
->   ($1.48). Root cause: same shape as session-20 plan-stage bug -- the build
->   agent explored the workspace source tree (incl node_modules, 2.7GB) and
->   ballooned context. The session-20 "do NOT explore" guard was applied to
->   plan.yaml only, NOT build.yaml.
-> - FIX: applied the same context-discipline guard to `agent-specs/build.yaml`
->   (no exploring node_modules/data/.git/dist/.next/coverage, "ls" not
->   recursive find, read only package.json + files a story names, keep
->   context lean). 90/90 tests still pass.
-> - Committed WITH session-20 changes (plan timeout fix + fillTemplate bump +
->   workspace-seeding exclude dirs) as one commit. Dead run deleted.
-> - PARKING_LOT updated: escalated runs are terminal by design (MVP), but
->   dashboard should surface that to the operator (no approve button exists).
-> - **NOT YET RE-RUN.** The 17-story epic (run-detail redesign with live
->   Phoenix log) is too large for a single 20-min build session even with
->   the prompt fix. Recommend: validate the fix on a small idea first, then
->   tackle the redesign (or scope the spec stage to produce fewer stories).
+> **Schema validation fix SHIPPED (2026-08-12, session 23):**
+> - run_323c3c93 failed at story 3.2 because the worker's artifact had
+>   `"failure_type": null` (result was "success") and Zod's `.optional()`
+>   rejects `null` (only accepts `undefined`). The worker ACTUALLY SUCCEEDED
+>   (21 tests, committed code) but the schema rejection caused
+>   `output_status: "escalate"` which killed the build loop.
+> - FIX: changed `.optional()` to `.nullish()` (accepts both `null` AND
+>   `undefined`) across ALL realcode schemas that parse LLM-emitted JSON:
+>   worker.ts (failure_type, failure_description), validator.ts
+>   (escalation_type), ship.ts (live_url, repo_url), plan.ts (ux_design_md,
+>   prototype_path), build.ts (stories).
+> - 206 tests pass. Engine container rebuilt + restarted.
+> - Committed + pushed (session 23).
+>
+> **Dashboard features NOT hardcoded (2026-08-12):**
+> - Royce reported a new run (run_e655ced9) was missing StoryProgress /
+>   ContainerGrid / LiveTraceStream / ContainerLogViewer. This is NOT a bug --
+>   those components render conditionally when `showBuildDetail` is true
+>   (build stage running, OR build artifact exists, OR build_state.json
+>   exists). run_e655ced9 failed at the `plan` stage (artifact extraction
+>   failed: "No <artifact> JSON block found"), so it never reached build.
+>   Any run that reaches the build stage will show the mission-control UI.
+>
+> **Issue #4 SHIPPED (2026-08-12, session 22):**
+> - The build stage now orchestrates a real multi-agent, multi-container
+>   anymake build loop (BuildLoopRunner). No more single-sandbox collapse.
+> - 6 stories shipped via anymake-agile (PRs #5-#10, merge 56af385):
+>   A4.1 Contracts (schemas + XOR + ADR-009), A4.2 Engine (BuildLoopRunner),
+>   A4.3 Sandbox (opencode env inheritance + secret-scan), A4.4 Agent Specs
+>   (worker.yaml + validator.yaml + graph flip), A4.5 Dashboard (mission-control
+>   UI), A4.6 Integration (e2e un-skipped + build-loop tests).
+> - 206 tests, 0 skipped. Dashboard shows per-story progress, container grid,
+>   live trace stream, container log viewer.
+> - Each sandbox container inherits operator's full opencode env (config,
+>   skills, MCP servers) — read-only mount + startup secret-scan.
+> - 3 plan review rounds, 18 comments resolved. A4.3 security gate approved
+>   by Royce.
+> - Tag: issue-4. Revert: `git revert -m 1 56af385`.
+>
+> **What's next:**
+> 1. Rebuild + restart the engine + dashboard containers (docker compose
+>    up -d --build) so the new code is live.
+> 2. Do a REAL end-to-end run from the dashboard: click "New Run", type a
+>    prompt like "Add a simple health check endpoint to realmemory", and
+>    watch the multi-container build loop work. Verify the dashboard shows
+>    per-story progress + container logs + live traces.
+> 3. If the real run works, the success model (>=85% ship rate) is testable.
+> 4. If it escalates, check which story failed — the BuildLoopRunner's
+>    build-state.json has the per-story status.
 >
 > **Agile issue #3 FIXED (2026-08-11, session 20):**
 > - The plan stage was timing out (5min, 139K prompt tokens) on every run
@@ -106,10 +136,10 @@
 
 ---
 
-**Last updated:** 2026-08-11 (session 21)
-**Updated by:** Claude (autonomous mode)
-**Current phase:** Phase 5 -- Launch COMPLETE (full e2e pipeline shipped)
-**Current step:** Phase 5 done. Build-stage timeout fix applied (build.yaml context-discipline guard). Awaiting re-run validation.
+**Last updated:** 2026-08-12 (session 23)
+**Updated by:** Claude (schema fix + dashboard investigation)
+**Current phase:** Phase 5 -- Launch (schema fix applied, engine rebuilt)
+**Current step:** Do a real e2e run to verify the build loop completes past story 3.2 with the schema fix.
 **project_type:** agentic-harness
 **autonomous_mode:** true
 

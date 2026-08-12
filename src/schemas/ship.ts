@@ -3,8 +3,8 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { StageOutputBase } from "./base.js";
 
 export const ShipArtifact = z.object({
-  live_url: z.string().url().optional(),
-  repo_url: z.string().url().optional(),
+  live_url: z.string().url().nullish(),
+  repo_url: z.string().url().nullish(),
   launch_checklist_md: z.string().min(1, "launch checklist required"),
   metrics_dashboard_md: z.string().min(1, "metrics dashboard required"),
 }).refine(

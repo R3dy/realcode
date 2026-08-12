@@ -11,8 +11,8 @@ export const Adr = z.object({
 export const PlanArtifact = z.object({
   prd_md: z.string().min(1, "prd.md content required"),
   adrs: z.array(Adr).min(1, "at least one ADR required"),
-  ux_design_md: z.string().optional(),
-  prototype_path: z.string().optional(),
+  ux_design_md: z.string().nullish(),
+  prototype_path: z.string().nullish(),
 });
 
 export const PlanOutput = StageOutputBase.extend({

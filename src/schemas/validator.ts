@@ -16,7 +16,7 @@ export const SecurityChecklistEntry = z.object({
 export const ValidatorArtifact = z.object({
   story_id: z.string().min(1),
   verdict: z.enum(["pass", "fail", "escalate"]),
-  escalation_type: z.string().optional(),
+  escalation_type: z.string().nullish(),
   criteria_results: z.array(CriterionResult).default([]),
   security_checklist: z.array(SecurityChecklistEntry).default([]),
   notes: z.string().default(""),

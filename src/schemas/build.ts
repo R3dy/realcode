@@ -37,7 +37,7 @@ export const BuildArtifact = z.object({
   test_results: TestResults,
   prs_merged: z.array(PrMerged).default([]),
   escalations: z.array(Escalation).default([]),
-  stories: z.array(StoryBuildResult).optional(),
+  stories: z.array(StoryBuildResult).nullish(),
 });
 
 export const BuildOutput = StageOutputBase.extend({

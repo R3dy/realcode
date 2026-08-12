@@ -5,8 +5,8 @@ import { StageOutputBase } from "./base.js";
 export const WorkerArtifact = z.object({
   story_id: z.string().min(1),
   result: z.enum(["success", "failed"]),
-  failure_type: z.enum(["environment", "implementation"]).optional(),
-  failure_description: z.string().optional(),
+  failure_type: z.enum(["environment", "implementation"]).nullish(),
+  failure_description: z.string().nullish(),
   branch: z.string().min(1),
   commits: z
     .array(z.object({ sha: z.string(), message: z.string() }))
