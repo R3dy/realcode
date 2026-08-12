@@ -130,7 +130,8 @@ describe("AgentStageRunner", () => {
       const sandbox = makeMockSandbox("");
       const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
       const stage = graph.stages[4]; // build, tier 3
-      const spec = loadAgentSpec(path.resolve(REPO_ROOT, stage.agent_spec));
+      // At A4.4 the build stage is an inner-loop stage: no agent_spec, use worker_spec
+      const spec = loadAgentSpec(path.resolve(REPO_ROOT, stage.worker_spec!));
 
       delete process.env.ANYMAKE_MODEL_TIER3;
       delete process.env.ANYMAKE_MODEL_TIER1;
@@ -145,7 +146,8 @@ describe("AgentStageRunner", () => {
       const sandbox = makeMockSandbox("");
       const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
       const stage = graph.stages[4]; // build, tier 3
-      const spec = loadAgentSpec(path.resolve(REPO_ROOT, stage.agent_spec));
+      // At A4.4 the build stage is an inner-loop stage: no agent_spec, use worker_spec
+      const spec = loadAgentSpec(path.resolve(REPO_ROOT, stage.worker_spec!));
 
       process.env.ANYMAKE_MODEL_TIER3 = "economy-model";
       expect(runner.resolveModel(stage, spec)).toBe("economy-model");

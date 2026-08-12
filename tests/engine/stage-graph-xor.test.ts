@@ -89,16 +89,18 @@ afterEach(() => {
 });
 
 describe("Stage-graph XOR rule", () => {
-  it("loads the real stage-graph.yaml at A4.1 (build stage has agent_spec + dormant inner_loop)", () => {
-    // The build stage has inner_loop: anymake-build-loop AND agent_spec, but
-    // NO worker_spec/validator_spec. The XOR rule must NOT fire (inner_loop is dormant).
+  it("loads the real stage-graph.yaml at A4.4 (build stage flipped to inner_loop triad)", () => {
+    // At A4.4 the build stage is flipped: agent_spec is removed, inner_loop
+    // is paired with worker_spec + validator_spec (the triad). The XOR rule's
+    // fs.existsSync enforcement passes because worker.yaml + validator.yaml
+    // now exist.
     const graph = loadStageGraph(REAL_GRAPH);
     expect(graph.stages.length).toBe(6);
     const buildStage = graph.stages.find((s) => s.id === "build")!;
-    expect(buildStage.agent_spec).toBeDefined();
+    expect(buildStage.agent_spec).toBeUndefined();
     expect(buildStage.inner_loop).toBeDefined();
-    expect(buildStage.worker_spec).toBeUndefined();
-    expect(buildStage.validator_spec).toBeUndefined();
+    expect(buildStage.worker_spec).toBeDefined();
+    expect(buildStage.validator_spec).toBeDefined();
   });
 
   it("rejects a stage with both agent_spec AND the inner_loop triad (cannot have both)", () => {

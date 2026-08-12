@@ -140,25 +140,47 @@ describe("Security: tool allowlist enforcement", () => {
     const graph = loadStageGraph(GRAPH_PATH);
     for (const stage of graph.stages) {
       // agent_spec is optional (inner-loop stages use worker_spec/validator_spec).
-      // At A4.1 every stage still has agent_spec; load it (or fall back to
-      // worker_spec when a stage has been flipped to inner-loop mode).
+      // Non-build stages have agent_spec; the build stage has worker_spec +
+      // validator_spec (flipped at A4.4). Load whichever is present.
       const specPath = stage.agent_spec ?? stage.worker_spec;
       if (!specPath) continue;
       const spec = loadAgentSpec(path.resolve(REPO_ROOT, specPath));
       expect(spec.tool_allowlist.length).toBeGreaterThan(0);
       expect(spec.tool_allowlist).toContain("Read");
-      expect(spec.tool_allowlist).toContain("Write");
+      // The worker needs Write; the validator does not. Stages with agent_spec
+      // (non-build) all have Write. The build stage's worker_spec has Write;
+      // its validator_spec is checked separately below.
+      if (stage.agent_spec) {
+        expect(spec.tool_allowlist).toContain("Write");
+      }
     }
   });
 
-  it("the build stage includes Edit + Bash (the worker needs code execution)", () => {
+  it("the build stage worker has Read/Write/Edit/Bash (the worker implements code)", () => {
     const graph = loadStageGraph(GRAPH_PATH);
     const buildStage = graph.stages.find((s) => s.id === "build")!;
-    // At A4.1 the build stage still has agent_spec (the flip is A4.4)
-    const specPath = buildStage.agent_spec ?? buildStage.worker_spec!;
-    const spec = loadAgentSpec(path.resolve(REPO_ROOT, specPath));
-    expect(spec.tool_allowlist).toContain("Edit");
-    expect(spec.tool_allowlist).toContain("Bash");
+    // At A4.4 the build stage is flipped: no agent_spec, has worker_spec + validator_spec
+    expect(buildStage.agent_spec).toBeUndefined();
+    expect(buildStage.worker_spec).toBeDefined();
+    const worker = loadAgentSpec(path.resolve(REPO_ROOT, buildStage.worker_spec!));
+    expect(worker.tool_allowlist).toEqual(
+      expect.arrayContaining(["Read", "Write", "Edit", "Bash"]),
+    );
+    expect(worker.tool_allowlist).toContain("Read");
+    expect(worker.tool_allowlist).toContain("Write");
+    expect(worker.tool_allowlist).toContain("Edit");
+    expect(worker.tool_allowlist).toContain("Bash");
+  });
+
+  it("the build stage validator has Read+Bash and NO Write/Edit (validator never modifies code)", () => {
+    const graph = loadStageGraph(GRAPH_PATH);
+    const buildStage = graph.stages.find((s) => s.id === "build")!;
+    expect(buildStage.validator_spec).toBeDefined();
+    const validator = loadAgentSpec(path.resolve(REPO_ROOT, buildStage.validator_spec!));
+    expect(validator.tool_allowlist).toContain("Read");
+    expect(validator.tool_allowlist).toContain("Bash");
+    expect(validator.tool_allowlist).not.toContain("Write");
+    expect(validator.tool_allowlist).not.toContain("Edit");
   });
 
   it("the frame stage does NOT include WebFetch (no network egress for framing)", () => {
@@ -181,10 +203,12 @@ describe("Security: tool allowlist enforcement", () => {
       // Must have at least one of agent_spec or inner_loop
       expect(hasAgentSpec || hasInnerLoop).toBe(true);
     }
-    // At A4.1 the build stage has agent_spec + a dormant inner_loop (no worker/validator specs)
+    // At A4.4 the build stage is flipped: no agent_spec, has the inner_loop triad
     const buildStage = graph.stages.find((s) => s.id === "build")!;
-    expect(buildStage.agent_spec).toBeDefined();
-    expect(buildStage.worker_spec).toBeUndefined();
+    expect(buildStage.agent_spec).toBeUndefined();
+    expect(buildStage.inner_loop).toBeDefined();
+    expect(buildStage.worker_spec).toBeDefined();
+    expect(buildStage.validator_spec).toBeDefined();
   });
 });
 
