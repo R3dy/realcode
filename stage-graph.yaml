@@ -78,7 +78,6 @@ stages:
   - id: build
     anymake_phase: 4
     anymake_agents: [anymake-orchestrator, anymake-planner, anymake-worker, anymake-validator, anymake-product-owner-proxy]
-    inner_loop: anymake-build-loop
     input_states: [specified]
     output_states: [built, build_failed, escalated]
     transitions:
@@ -93,7 +92,9 @@ stages:
     model_tier: 3
     permission_mode: unattended
     artifact_schema: schemas/build.schema.json
-    agent_spec: agent-specs/build.yaml
+    inner_loop: anymake-build-loop
+    worker_spec: agent-specs/worker.yaml
+    validator_spec: agent-specs/validator.yaml
   - id: ship
     anymake_phase: 5
     anymake_agents: [anymake-deploy]

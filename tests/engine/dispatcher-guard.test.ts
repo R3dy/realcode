@@ -90,9 +90,21 @@ describe("Dispatcher missing-runner guard", () => {
   });
 
   it("the guard condition is stage.inner_loop && stage.worker_spec (not inner_loop alone)", async () => {
-    // At A4.1 the build stage has inner_loop (dormant) but NO worker_spec.
-    // The guard must NOT fire — the old runner.run() path is taken.
-    // We verify by checking the dispatcher uses runner.run (not buildLoopRunner).
+    // Simulate a dormant inner_loop stage: inner_loop set, NO worker_spec
+    // (the A4.1 build-stage shape, before the A4.4 flip). The guard must NOT
+    // fire — the old runner.run() path is taken. We mutate the loaded graph
+    // so this test does not depend on the real graph's build-stage shape
+    // (which is flipped to the triad at A4.4).
+    const buildStage = graph.stages.find((s) => s.id === "build")!;
+    const dormantBuild: StageEntry = {
+      ...buildStage,
+      agent_spec: "agent-specs/build.yaml",
+      inner_loop: "anymake-build-loop",
+      worker_spec: undefined,
+      validator_spec: undefined,
+    };
+    graph.stages = graph.stages.map((s) => (s.id === "build" ? dormantBuild : s));
+
     const runner = {
       run: vi.fn().mockResolvedValue({
         output_status: "pass",
