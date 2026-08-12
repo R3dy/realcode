@@ -6,6 +6,7 @@ import type { StageEntry, StageGraph } from "../engine/stage-graph.js";
 import type { WorkItem, Storage } from "../backend/types.js";
 import { SandboxRunner } from "../sandbox/runner.js";
 import { loadAgentSpec, type AgentSpec } from "./spec-loader.js";
+import { eventFromJsonLine, appendLiveEvent } from "../engine/live-state.js";
 import {
   FrameOutput,
   DiscoverOutput,
@@ -62,6 +63,7 @@ export class AgentStageRunner implements StageRunner {
       specOverride?: string;
       schemaKey?: string;
       extraContext?: Record<string, unknown>;
+      attempt?: number;
     },
   ) {
     if (!stage.agent_spec && !opts?.specOverride) {
@@ -82,6 +84,34 @@ export class AgentStageRunner implements StageRunner {
     const dispatchMessage = this.buildDispatchMessage(spec, userPrompt, schemaJson, stage, role);
     const traceId = (item.payload.trace_id as string) || item.run_id;
 
+    // A11.1 non-build live capture. The SAME AgentStageRunner.run() is used by
+    // BuildLoopRunner for per-story Worker/Validator sub-dispatches (it passes
+    // specOverride — build sub-dispatch). Those must stay byte-identical to
+    // today: no identity fields, no liveCapture, no onJsonLine (1-C1). Only a
+    // DIRECT non-build stage dispatch (no opts / no specOverride) enables live
+    // capture.
+    const isBuildSubDispatch = opts?.specOverride !== undefined;
+    const liveOptions = isBuildSubDispatch
+      ? {}
+      : {
+          runId: item.run_id,
+          stageId: stage.id,
+          containerRole: stage.id,
+          containerAttempt: opts?.attempt ?? 0,
+          storyId: "stage" as const,
+          liveCapture: true as const,
+          onJsonLine: (ev: unknown): void => {
+            try {
+              const traceEvent = eventFromJsonLine(ev, stage.id);
+              if (traceEvent) {
+                appendLiveEvent(item.run_id, traceEvent);
+              }
+            } catch (err) {
+              console.warn(`[agents] onJsonLine handler failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          },
+        };
+
     const result = await this.sandbox.run({
       workspacePath,
       model,
@@ -90,6 +120,7 @@ export class AgentStageRunner implements StageRunner {
       localMode: this.options.localMode ?? true,
       timeoutMs: stage.timeout_ms ?? this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       env: this.collectModelEnv(),
+      ...liveOptions,
     });
 
     const tokenUsage = SandboxRunner.extractTokenUsage(result.jsonEvents ?? []);

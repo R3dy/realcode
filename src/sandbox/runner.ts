@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import { discoverMcpPaths } from "./mcp-discovery.js";
 import { scanForSecrets } from "./secret-scan.js";
+import { writeLiveState } from "../engine/live-state.js";
 
 export interface SandboxOptions {
   workspacePath: string;
@@ -15,18 +16,38 @@ export interface SandboxOptions {
   localMode?: boolean;
   env?: Record<string, string>;
   /**
-   * BuildLoopRunner (A4.2) populates the following four fields when it
-   * dispatches a per-story Worker/Validator sandbox so the container gets a
-   * deterministic name + cidfile capture. When undefined (the non-build
-   * dispatch path — e.g. AgentStageRunner dispatching frame/discover/plan/
-   * spec/ship), runDocker omits the --name/--cidfile flags so those call sites
-   * keep working unchanged.
+   * Identity fields (runId/storyId/containerRole/containerAttempt) were added
+   * by A4.3 for the BuildLoopRunner per-story Worker/Validator dispatch so the
+   * container gets a deterministic name + cidfile capture. Today that
+   * build-loop wiring is DEAD CODE: no dispatch path passes a real storyId
+   * (BuildLoopRunner leaves every identity field unset — see CONVENTIONS.md
+   * + issue-11 plan §2 root cause). The real-storyId branch of
+   * `buildContainerName` is preserved for byte-identity + the post-merge
+   * Cartographer-flagged build-loop wiring.
+   *
+   * The live caller is AgentStageRunner (A11.1) dispatching a NON-build stage
+   * (frame/discover/plan/spec/ship): it passes `storyId:"stage"` (the non-build
+   * sentinel), the identity fields, and `liveCapture:true`. When
+   * `liveCapture` is true, runDocker passes --name/--cidfile, tees the sandbox
+   * log to runs/{runId}/containers/, and populates live.json — for ANY
+   * non-build sandbox, no matter which stage.
+   *
+   * When `liveCapture` is falsy (BuildLoopRunner's build sub-dispatches and
+   * the local-mode path), runDocker behaves EXACTLY as before A11.1: no
+   * --name, no --cidfile, no tee, no onJsonLine, no live.json writes — the
+   * build spawn args stay byte-identical.
    */
   containerName?: string;
   containerRole?: string;
   containerAttempt?: number;
   storyId?: string;
   runId?: string;
+  /** Non-build sentinel capture (A11.1): see the docstring above. */
+  liveCapture?: boolean;
+  /** Stage id for the tee log path (`stage-<stageId>-<attempt>.log`). */
+  stageId?: string;
+  /** In-flight JSON-line callback (A11.1), invoked per parsed stdout line. */
+  onJsonLine?: (ev: unknown) => void;
 }
 
 export interface SandboxResult {
@@ -187,19 +208,54 @@ export class SandboxRunner {
       args.push("-v", `${p}:${p}:ro`);
     }
 
-    // ─── Container naming + cidfile capture (A4.3) ──────────────────────
-    // The BuildLoopRunner (A4.2) populates containerName/role/attempt/storyId/
-    // runId on SandboxOptions when dispatching a per-story Worker/Validator
-    // sandbox. When all four identity fields are present, pass `--name
-    // realcode-<runId>-<storyId>-<role>-<attempt>` (dots → dashes so the value
-    // is a valid Docker container name) + `--cidfile <tmpfile>` so the
-    // container ID is captured into SandboxResult.containerId. When ANY of
-    // the four is missing (the non-build-dispatch backward-compat path — e.g.
-    // AgentStageRunner dispatching frame/discover/plan/spec/ship), omit both
-    // flags so those call sites keep working unchanged.
+    // ─── Container naming + cidfile capture + live.json population (A11.1) ─
+    // The block fires whenever a deterministic name is derivable:
+    //   (a) `liveCapture === true` (every non-build AgentStageRunner dispatch
+    //       — storyId:"stage" sentinel): pass `--name realcode-<runId>-<role>
+    //       -<attempt>` + `--cidfile <tmpfile>`, tee the sandbox log, and write
+    //       live.json.container BEFORE spawn (1-C2 pre-spawn) so the dashboard
+    //       can show the container immediately;
+    //   (b) the A4.3 legacy path (four identity fields present, `liveCapture`
+    //       falsy — dead code today, preserved for byte-identity): --name +
+    //       --cidfile only, no live.json/tee/onJsonLine — exactly today's
+    //       behavior.
+    // BuildLoopRunner leaves ALL identity fields unset → buildContainerName
+    // returns null → this whole block is skipped → the build spawn args stay
+    // byte-identical to today (no --name, no --cidfile, no tee, no onJsonLine,
+    // no live.json writes).
     let cidFile: string | null = null;
+    let logFilePath: string | undefined;
     const containerName = SandboxRunner.buildContainerName(opts);
     if (containerName) {
+      if (opts.liveCapture === true && opts.runId) {
+        const containerAttempt = opts.containerAttempt ?? 0;
+        const stageId = opts.stageId ?? opts.containerRole ?? "stage";
+        // Tee log path lives under the engine's data dir (container-local),
+        // which is bind-mounted to the host — no host-path translation needed
+        // for a file the engine writes itself (CONVENTIONS.md).
+        logFilePath = path.join(
+          containerDataDir,
+          "runs", opts.runId, "containers",
+          `stage-${stageId}-${containerAttempt}.log`,
+        );
+        // Pre-spawn live.json container population (1-C2): name + log_path are
+        // known now, container_id is not yet. Wrapped in try/catch — a failure
+        // here must NOT prevent the spawn.
+        try {
+          writeLiveState(opts.runId, {
+            container: {
+              container_id: null,
+              name: containerName,
+              role: opts.containerRole ?? stageId,
+              status: "running",
+              started_at: Date.now(),
+              log_path: `runs/${opts.runId}/containers/stage-${stageId}-${containerAttempt}.log`,
+            },
+          });
+        } catch (err) {
+          console.warn(`[realcode-sandbox] live-state pre-spawn write failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       args.push("--name", containerName);
       try {
         const cidDir = fs.mkdtempSync(path.join(os.tmpdir(), "realcode-cid-"));
@@ -220,11 +276,25 @@ export class SandboxRunner {
     }
     args.push(opts.dispatchMessage);
 
-    const result = await this.exec("docker", args, {}, opts.timeoutMs ?? 300000, opts.workspacePath);
+    const execPromise = this.exec("docker", args, {}, opts.timeoutMs ?? 300000, opts.workspacePath, logFilePath, opts.onJsonLine);
+    // Post-spawn cidfile poll (1-C2): a bounded fire-and-forget poll that
+    // populates live.json.container.container_id as soon as Docker writes the
+    // cidfile (~200ms × 25 = 5s ceiling). Runs concurrently with the exec
+    // await; on timeout container_id stays null and is backfilled by the
+    // post-exit cidfile read. Only meaningful when liveCapture is true (it
+    // writes live.json) — gated on it so the legacy/build paths take no poll.
+    // Never throws.
+    const pollPromise = cidFile && opts.runId && opts.liveCapture === true
+      ? this.pollCidFile(opts.runId, cidFile)
+      : Promise.resolve();
+    const result = await execPromise;
+    await pollPromise;
 
     // Read the captured container ID from the cidfile (if one was written).
     // On any read failure, containerId stays "" — never undefined, never
     // crashes downstream readers (BuildLoopRunner writes containers[].container_id).
+    // With liveCapture, backfill the resolved cid to live.json (1-C2 post-exit
+    // backfill, in case the mid-flight poll timed out).
     if (cidFile && result.containerId === "") {
       try {
         const cid = fs.readFileSync(cidFile, "utf8").trim();
@@ -237,12 +307,42 @@ export class SandboxRunner {
           try { fs.rmSync(cidDir, { recursive: true, force: true }); } catch { /* best effort */ }
         }
       }
+      if (result.containerId && opts.runId && opts.liveCapture === true) {
+        try {
+          writeLiveState(opts.runId, { container: { container_id: result.containerId } });
+        } catch (err) {
+          console.warn(`[realcode-sandbox] live-state cid backfill failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
     }
 
     return result;
   }
 
-  private exec(cmd: string, args: string[], env: Record<string, string>, timeoutMs: number, cwd: string): Promise<SandboxResult> {
+  /**
+   * Bounded cidfile poll (1-C2). Polls every 200ms up to ~5s (25 iterations).
+   * Once the cidfile is readable with non-empty content, writes it into
+   * live.json and stops. On timeout, leaves container_id null (backfilled
+   * post-exit). Fully try/catch-wrapped — never throws.
+   */
+  private async pollCidFile(runId: string, cidFile: string): Promise<void> {
+    const pollIntervalMs = 200;
+    const maxPolls = 25;
+    for (let i = 0; i < maxPolls; i++) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      try {
+        const cid = fs.readFileSync(cidFile, "utf8").trim();
+        if (cid) {
+          writeLiveState(runId, { container: { container_id: cid } });
+          return;
+        }
+      } catch {
+        // cidfile not yet written — keep polling
+      }
+    }
+  }
+
+  private exec(cmd: string, args: string[], env: Record<string, string>, timeoutMs: number, cwd: string, logFilePath?: string, onJsonLine?: (ev: unknown) => void): Promise<SandboxResult> {
     return new Promise((resolve) => {
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
@@ -267,11 +367,70 @@ export class SandboxRunner {
         setTimeout(() => proc.kill("SIGKILL"), 5000);
       }, timeoutMs);
 
-      proc.stdout?.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-      proc.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+      // Optional tee of the child's stdout+stderr to a log file (A11.1). The
+      // file is written under data/runs/{runId}/containers/, already excluded
+      // from workspace seeding (INV-8). Wrapped in try/catch — a tee failure
+      // must NEVER crash the spawn or lose stdout (stdoutChunks stays the
+      // source of truth for SandboxResult.stdout).
+      let logStream: NodeJS.WritableStream | null = null;
+      if (logFilePath) {
+        try {
+          fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
+          logStream = fs.createWriteStream(logFilePath, { flags: "w" });
+          proc.stdout?.pipe(logStream);
+          proc.stderr?.pipe(logStream);
+        } catch (err) {
+          console.warn(`[realcode-sandbox] tee setup failed: ${err instanceof Error ? err.message : String(err)}`);
+          logStream = null;
+        }
+      }
+
+      // In-flight JSON-line buffer (A11.1): accumulates stdout chunks, splits on
+      // "\n", and invokes onJsonLine per complete parsed line. Wrapped in
+      // try/catch — a throw in the handler logs and continues; stdout collection
+      // is unaffected.
+      let lineBuffer = "";
+
+      proc.stdout?.on("data", (chunk: Buffer) => {
+        stdoutChunks.push(chunk);
+        if (logStream) {
+          try { logStream.write(chunk); } catch (err) { console.warn(`[realcode-sandbox] tee write failed: ${err instanceof Error ? err.message : String(err)}`); }
+        }
+        if (onJsonLine) {
+          try {
+            lineBuffer += chunk.toString("utf8");
+            let nl: number;
+            while ((nl = lineBuffer.indexOf("\n")) !== -1) {
+              const line = lineBuffer.slice(0, nl).trim();
+              lineBuffer = lineBuffer.slice(nl + 1);
+              if (!line) continue;
+              try {
+                onJsonLine(JSON.parse(line) as unknown);
+              } catch {
+                // skip non-JSON lines (same as parseJsonLines)
+              }
+            }
+          } catch (err) {
+            console.warn(`[realcode-sandbox] onJsonLine handler failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      });
+      proc.stderr?.on("data", (chunk: Buffer) => {
+        stderrChunks.push(chunk);
+        if (logStream) {
+          try { logStream.write(chunk); } catch { /* best effort */ }
+        }
+      });
+
+      const closeLog = () => {
+        if (logStream) {
+          try { (logStream as { end?: () => void }).end?.(); } catch { /* best effort */ }
+        }
+      };
 
       proc.on("close", (code) => {
         clearTimeout(timer);
+        closeLog();
         const stdout = Buffer.concat(stdoutChunks).toString("utf8");
         const stderr = Buffer.concat(stderrChunks).toString("utf8");
         const jsonEvents = stdout ? this.parseJsonLines(stdout) : undefined;
@@ -287,6 +446,7 @@ export class SandboxRunner {
 
       proc.on("error", (err) => {
         clearTimeout(timer);
+        closeLog();
         resolve({
           exitCode: -1,
           stdout: "",
@@ -314,24 +474,48 @@ export class SandboxRunner {
   }
 
   /**
-   * Build the deterministic `--name` value for a per-story sandbox container:
-   * `realcode-<runId>-<storyId>-<role>-<attempt>` with dots → dashes so the
-   * value is a valid Docker container name. Returns `null` when ANY of the
-   * four identity fields is missing — the non-build-dispatch backward-compat
-   * path (e.g. AgentStageRunner dispatching frame/discover/plan/spec/ship
-   * omits --name + --cidfile).
+   * Build the deterministic `--name` value for a sandbox container.
+   *
+   * Non-build dispatch (A11.1) — `storyId === "stage"` (the non-build sentinel,
+   * or `storyId` undefined with `liveCapture:true`): produces
+   * `realcode-<runId>-<role>-<attempt>` (no story segment; dots → dashes on
+   * runId only).
+   *
+   * Build-loop dispatch (a real storyId): keeps the existing 4-field form
+   * `realcode-<runId>-<storyId>-<role>-<attempt>` byte-identical to the
+   * pre-A11.1 output. NOTE: this branch is DEAD CODE today (no dispatch path
+   * passes a real storyId — BuildLoopRunner leaves identity fields unset) but
+   * is preserved for byte-identity + the post-merge Cartographer-flagged
+   * build-loop wiring. Do NOT delete it.
+   *
+   * Returns `null` when `runId` + `containerRole` + `containerAttempt` are not
+   * all present. When `liveCapture` is falsy (the build path / local mode) it
+   * additionally requires `storyId` — the pre-A11.1 backward-compat contract
+   * (any identity field missing → null → no --name/--cidfile).
    *
    * Deterministic naming is what A4.5/A4.6's force-delete teardown uses to
    * `docker rm -f` running containers before removing the workspace (INV-6)
-   * — it reconstructs the name from run_id + story_id + role + attempt without
-   * a DB lookup.
+   * — it reconstructs the name from run_id + role + attempt without a DB
+   * lookup.
    */
   static buildContainerName(opts: SandboxOptions): string | null {
-    if (!opts.runId || !opts.storyId || !opts.containerRole || opts.containerAttempt === undefined) {
+    if (!opts.runId || !opts.containerRole || opts.containerAttempt === undefined) {
+      return null;
+    }
+    // storyId defaults to "stage" (non-build sentinel) when undefined AND
+    // liveCapture is true (A11.1 non-build dispatch).
+    const nonBuild = opts.storyId === "stage"
+      || (opts.storyId === undefined && opts.liveCapture === true);
+    if (opts.storyId === undefined && opts.liveCapture !== true) {
+      // Pre-A11.1 build-path backward-compat: storyId required when liveCapture
+      // is falsy (any missing identity field → null → no --name/--cidfile).
       return null;
     }
     const sanitizedRunId = opts.runId.replace(/\./g, "-");
-    const sanitizedStoryId = opts.storyId.replace(/\./g, "-");
+    if (nonBuild) {
+      return `realcode-${sanitizedRunId}-${opts.containerRole}-${opts.containerAttempt}`;
+    }
+    const sanitizedStoryId = opts.storyId!.replace(/\./g, "-");
     return `realcode-${sanitizedRunId}-${sanitizedStoryId}-${opts.containerRole}-${opts.containerAttempt}`;
   }
 

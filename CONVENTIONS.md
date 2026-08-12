@@ -10,7 +10,10 @@
 
 ## Engine / Dispatcher Pattern
 
-*(none established yet)*
+### live.json realtime channel for non-build stages (A11.1)
+**Established by:** Story A11.1 / issue #11
+**Pattern:** Every NON-build stage dispatch writes a derived transient `live.json` at `REALCODE_DATA_DIR/runs/{runId}/live.json` (INV-2 — NOT a stage artifact, never schema-validated, not added to `schemas/`). The dispatcher gates all three writes on `!stage.inner_loop` so the build path stays byte-identical. Writes: (1) stage start — `status:"running"` right after `startStageSpan`; (2) stage end (success) — `status:"completed"` + `container.status:"exited"`, then `flushLiveEvents`; (3) catch path — `status:"failed"` + `failure_message` + `container.status:"failed"`, wrapped in its own try/catch so it can never mask the original error (INV-4). All three are try/catch-wrapped — a live-state write failure NEVER fails the stage. `live.json` is atomic (tmp+rename, same as control.json), event content truncated to 500 chars, events[] capped at 200, 250ms coalesce with a `flushLiveEvents` trailing flush at stage end. File path is `REALCODE_DATA_DIR` (container-local) — no host-path translation (CONVENTIONS host-path rule): the engine writes it, so the container-local dir is correct.
+**See:** `src/engine/live-state.ts`, `src/engine/dispatcher.ts` (the three write sites), `tests/engine/live-state.test.ts`, `tests/engine/dispatcher-live-state.test.ts`
 
 ## Agent Spec Pattern
 
@@ -25,6 +28,11 @@
 **See:** `src/agents/runner.ts`
 
 ## Sandbox / Docker Pattern
+
+### liveCapture-gated non-build container/log/tee capture (A11.1)
+**Established by:** Story A11.1 / issue #11
+**Pattern:** `SandboxOptions.liveCapture?: boolean` gates the new non-build capture mechanism in `runDocker`. `AgentStageRunner.run()` enables it (adds `runId`, `stageId`, `containerRole: stage.id`, `containerAttempt: opts?.attempt ?? 0`, `storyId:"stage"`, `liveCapture:true`, `onJsonLine`) ONLY for DIRECT non-build stage dispatches — the SAME method is also used by `BuildLoopRunner` for per-story Worker/Validator sub-dispatches (signalled by `opts.specOverride` being set), and those must stay byte-identical (no identity fields, no liveCapture, no onJsonLine — proven by `tests/integration/build-loop-live-capture-boundary.test.ts`). When `liveCapture:true`: the container gets `--name realcode-<runId>-<role>-<attempt>` (stage sentinel — `buildContainerName` drops the story segment when `storyId==="stage"`, keeping the real-storyId 4-field branch as dead code for post-merge build-loop wiring), `--cidfile`, a pre-spawn `live.json.container` write (name+log_path, container_id null — 1-C2), a bounded ~5s cidfile poll that backfills `container_id` mid-flight, a post-exit cidfile backfill, and an `exec()` tee of stdout+stderr to `runs/{runId}/containers/stage-{stageId}-{attempt}.log` + a per-line `onJsonLine` callback (both try/catch-wrapped; `stdoutChunks` stays the source of truth for `SandboxResult.stdout`). The `--name`/`--cidfile` block ALSO fires on the A4.3 legacy path (four identity fields present, `liveCapture` falsy — dead code preserved for byte-identity) but with NO live.json/tee/onJsonLine.
+**See:** `src/sandbox/runner.ts` (`runDocker`, `exec`, `buildContainerName`, `pollCidFile`), `src/agents/runner.ts` (`run()` liveOptions gate), `tests/sandbox/runner-live-capture.test.ts`, `tests/sandbox/runner-naming.test.ts`
 
 ### Host-path translation via REALCODE_HOST_DATA_DIR
 **Established by:** Phase 4 (commit 9faa3cf)
