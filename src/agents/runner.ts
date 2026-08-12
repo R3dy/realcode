@@ -51,6 +51,12 @@ export class AgentStageRunner implements StageRunner {
   ) {}
 
   async run(item: WorkItem, stage: StageEntry, workspacePath: string) {
+    if (!stage.agent_spec) {
+      throw new Error(
+        `Stage '${stage.id}' has no agent_spec — cannot dispatch via AgentStageRunner. ` +
+          `Inner-loop stages require a BuildLoopRunner (6th Engine constructor param).`,
+      );
+    }
     const specPath = path.resolve(this.options.repoRoot, stage.agent_spec);
     const spec = loadAgentSpec(specPath);
     const model = this.resolveModel(stage, spec);
