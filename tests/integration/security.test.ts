@@ -26,7 +26,7 @@ describe("Security: credential isolation", () => {
       const mockSandbox = {
         run: vi.fn(async (opts: SandboxOptions): Promise<SandboxResult> => {
           capturedOpts.push(opts);
-          return { exitCode: 0, stdout: "<artifact>{}</artifact>", stderr: "", jsonEvents: [], timedOut: false };
+          return { exitCode: 0, stdout: "<artifact>{}</artifact>", stderr: "", jsonEvents: [], timedOut: false, containerId: "" };
         }),
       };
 

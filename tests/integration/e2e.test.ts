@@ -120,6 +120,7 @@ function makeMockSandbox() {
           stderr: `Unknown stage: ${stageId}`,
           jsonEvents: [],
           timedOut: false,
+          containerId: "",
         };
       }
       return {
@@ -135,6 +136,7 @@ function makeMockSandbox() {
           },
         ],
         timedOut: false,
+        containerId: "",
       };
     }),
   };
