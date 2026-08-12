@@ -45,7 +45,7 @@ function fmtTime(ts?: number): string {
   return new Date(ts).toISOString().slice(11, 19);
 }
 
-export function LiveTraceStream({ runId, buildActive }: { runId: string; buildActive: boolean }) {
+export function LiveTraceStream({ runId, runActive }: { runId: string; runActive: boolean }) {
   const [events, setEvents] = useState<TraceEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const [done, setDone] = useState(false);
@@ -56,12 +56,12 @@ export function LiveTraceStream({ runId, buildActive }: { runId: string; buildAc
   const [autoScroll, setAutoScroll] = useState(true);
 
   // SSE connection lifecycle: reconnect when runId changes; pause when the
-  // user pauses or the build is no longer active.
+  // user pauses or the run is no longer active.
   useEffect(() => {
-    if (paused || !buildActive) {
+    if (paused || !runActive) {
       // Keep the events already received; just don't open a new connection.
-      if (!buildActive && !done && events.length === 0) {
-        // build not active and nothing streamed — show offline.
+      if (!runActive && !done && events.length === 0) {
+        // run not active and nothing streamed — show offline.
       }
       return;
     }
@@ -94,7 +94,7 @@ export function LiveTraceStream({ runId, buildActive }: { runId: string; buildAc
       es.close();
       setConnected(false);
     };
-  }, [runId, paused, buildActive]);
+  }, [runId, paused, runActive]);
 
   // Auto-scroll on new events.
   useEffect(() => {
@@ -126,7 +126,7 @@ export function LiveTraceStream({ runId, buildActive }: { runId: string; buildAc
           <h3 className="font-display text-sm font-semibold text-ink-100">Live Trace</h3>
           <StatusDot tone={connected ? "run" : done ? "pass" : "neutral"} pulse={connected} />
           <span className="text-[11px] text-ink-500">
-            {connected ? "live" : done ? "stream closed" : buildActive ? "connecting…" : "tracing offline"}
+            {connected ? "live" : done ? "stream closed" : runActive ? "connecting…" : "tracing offline"}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -165,9 +165,9 @@ export function LiveTraceStream({ runId, buildActive }: { runId: string; buildAc
             <Radio className="h-3.5 w-3.5" />
             {connected
               ? "Waiting for agent messages…"
-              : buildActive
+              : runActive
                 ? "Connecting to the trace stream…"
-                : "Tracing offline — start a build to see live agent messages + tool calls."}
+                : "Tracing offline — start a run to see live agent messages + tool calls."}
           </div>
         ) : (
           filtered.map((ev, i) => <TraceRow key={i} ev={ev} />)

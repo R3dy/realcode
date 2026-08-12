@@ -19,6 +19,7 @@ import { StoryProgress } from "@/components/StoryProgress";
 import { ContainerGrid } from "@/components/ContainerGrid";
 import { ContainerLogViewer } from "@/components/ContainerLogViewer";
 import { LiveTraceStream } from "@/components/LiveTraceStream";
+import { CurrentActivityBar } from "@/components/CurrentActivityBar";
 import {
   fetchRunDetail,
   deleteRun,
@@ -26,7 +27,7 @@ import {
   type RunRecord,
 } from "@/lib/api";
 import { STAGE_ORDER, type StageName, type StageStatus } from "@/lib/data";
-import type { DetailStageStatus, RunDetailResponse } from "@/lib/engine";
+import type { DetailStageStatus, RunDetailResponse, LiveState } from "@/lib/engine";
 
 const STAGE_DISPLAY: Record<StageName, string> = {
   frame: "Frame",
@@ -139,6 +140,11 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
   const buildState = (data as RunDetailResponse & { build_state?: unknown }).build_state;
   const buildStageActive = stages.build === "running";
   const showBuildDetail = buildStageActive || Boolean(artifacts.build) || Boolean(buildState);
+
+  // Pipeline Activity section predicate (A11.3 — 1-C4): renders whenever a
+  // live_state exists — including terminal runs. NOT gated on isActive.
+  const liveState = (data as RunDetailResponse & { live_state?: LiveState }).live_state ?? null;
+  const hasLiveActivity = Boolean(liveState);
   const hasRunningBuildContainers = Boolean(
     buildState &&
       typeof buildState === "object" &&
@@ -209,6 +215,34 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
         </div>
       </Card>
 
+      {/* Pipeline Activity section (A11.3 — ungate realtime visibility for
+        non-build stages). Renders whenever a live_state exists. CurrentActivityBar
+        + live containers + trace stream + container logs for ANY active stage. */}
+      {hasLiveActivity && (
+        <div className="space-y-3">
+          <CurrentActivityBar runId={params.id} liveState={liveState} runStatus={run.status} />
+          <ContainerGrid
+            runId={params.id}
+            buildActive={buildStageActive}
+            selectedCid={selectedContainer?.container_id ?? null}
+            onSelect={(c) =>
+              setSelectedContainer({
+                container_id: c.container_id,
+                name: c.name,
+                role: c.role,
+                story_id: c.story_id,
+              })
+            }
+          />
+          <LiveTraceStream runId={params.id} runActive={isActive} />
+          <ContainerLogViewer
+            runId={params.id}
+            container={selectedContainer}
+            runActive={isActive}
+          />
+        </div>
+      )}
+
       {/* Stage cards */}
       <div className="space-y-3">
         {STAGE_ORDER.map((stageName) => {
@@ -278,11 +312,11 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
               }
             />
           </div>
-          <LiveTraceStream runId={params.id} buildActive={buildStageActive} />
+          <LiveTraceStream runId={params.id} runActive={buildStageActive} />
           <ContainerLogViewer
             runId={params.id}
             container={selectedContainer}
-            buildActive={buildStageActive}
+            runActive={buildStageActive}
           />
         </div>
       )}
