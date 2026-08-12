@@ -42,4 +42,5 @@ ENV PATH=/root/.opencode/bin:$PATH
 
 WORKDIR /workspace
 
-CMD ["opencode"]
+ENTRYPOINT ["opencode"]
+CMD ["--help"]
