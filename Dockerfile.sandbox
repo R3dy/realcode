@@ -1,0 +1,35 @@
+# Dockerfile.sandbox -- realcode-sandbox image
+# The headless opencode-in-Docker sandbox image (ADR-001). The engine spawns a
+# sibling container from this image for each per-stage / per-story sandbox
+# dispatch (docker-in-docker via docker.sock). The operator's opencode config
+# (~/.config/opencode) + mission-control root are bind-mounted read-only at
+# spawn time so the sandboxed opencode inherits the operator's agents/skills/
+# MCP servers (issue #4 / A4.3).
+#
+# Build:  docker compose build sandbox
+# Run:    spawned by the engine via `docker run --rm --network realcode-sandbox-net ...`
+
+FROM node:20-slim
+
+# git: opencode + anymake plugins clone from git URLs at runtime.
+# docker.io: reserved for any future sandbox-spawns-sandbox scenario (not used
+# in MVP but kept for parity with the engine image). procps: ps for debugging.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    docker.io \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# opencode is the headless agent runner inside the sandbox. Global install so
+# it's on PATH for `opencode run --auto --format json`.
+RUN npm install -g opencode@latest
+
+# opencode reads HOME + XDG_CONFIG_HOME to locate its config dir. The engine
+# passes -e HOME=/root -e XDG_CONFIG_HOME=/root/.config at spawn time; mirror
+# the HOME default here so a manual `docker run -it realcode-sandbox` also
+# finds the mounted config.
+ENV HOME=/root
+
+WORKDIR /workspace
+
+CMD ["opencode"]
