@@ -7,6 +7,7 @@ import { loadStageGraph } from "../../src/engine/stage-graph.js";
 import { SQLiteQueue } from "../../src/backend/sqlite-queue.js";
 import { FileStorage } from "../../src/backend/file-storage.js";
 import { AgentStageRunner } from "../../src/agents/runner.js";
+import { BuildLoopRunner } from "../../src/engine/build-loop.js";
 import { SandboxRunner } from "../../src/sandbox/runner.js";
 import type { StageGraph } from "../../src/engine/stage-graph.js";
 import type { SandboxResult, SandboxOptions } from "../../src/sandbox/runner.js";
@@ -76,21 +77,31 @@ const STAGE_ARTIFACTS: Record<string, Record<string, unknown>> = {
       ],
     },
   },
-  build: {
+  build_worker: {
     gate_verdict: "pass",
-    gate_notes: "All 8 stories built, tests passing, 3 PRs merged",
-    status: "built",
-    revisions_used: 0,
-    escalation_count: 0,
+    gate_notes: "Story implemented, tests passing",
+    status: "success",
     artifact: {
-      repo_path: "/workspace/financeflow",
-      test_results: { passed: 42, failed: 0, skipped: 2, coverage_pct: 87 },
-      prs_merged: [
-        { number: 1, title: "feat: auth flow", url: "https://github.com/test/financeflow/pull/1" },
-        { number: 2, title: "feat: dashboard + charts", url: "https://github.com/test/financeflow/pull/2" },
-        { number: 3, title: "feat: transactions", url: "https://github.com/test/financeflow/pull/3" },
-      ],
-      escalations: [],
+      story_id: "E1.1",
+      result: "success",
+      branch: "main",
+      commits: [{ sha: "abc1234", message: "feat(story-E1.1): implementation" }],
+      test_output: "All tests passed",
+      test_passed: 5,
+      test_failed: 0,
+      notes: "",
+    },
+  },
+  build_validator: {
+    gate_verdict: "pass",
+    gate_notes: "All criteria verified, security clean",
+    status: "pass",
+    artifact: {
+      story_id: "E1.1",
+      verdict: "pass",
+      criteria_results: [{ criterion: "story works", result: "pass", evidence: "tests pass" }],
+      security_checklist: [{ check: "no secrets committed", result: "pass" }],
+      notes: "",
     },
   },
   ship: {
@@ -109,22 +120,44 @@ const STAGE_ARTIFACTS: Record<string, Record<string, unknown>> = {
 function makeMockSandbox() {
   return {
     run: vi.fn(async (opts: SandboxOptions): Promise<SandboxResult> => {
+      // Key on Role: first (build_worker, build_validator), fall back to Stage:
+      // (non-build stages where Role === Stage === stage.id).
+      const roleMatch = opts.dispatchMessage.match(/Role:\s*(\w+)/);
       const stageMatch = opts.dispatchMessage.match(/Stage:\s*(\w+)/);
-      const stageId = stageMatch ? stageMatch[1] : "unknown";
-      const artifact = STAGE_ARTIFACTS[stageId];
+      const roleKey = roleMatch ? roleMatch[1] : null;
+      const stageKey = stageMatch ? stageMatch[1] : "unknown";
+      const key = roleKey ?? stageKey;
+
+      let artifact = STAGE_ARTIFACTS[key];
+      if (!artifact && stageKey) {
+        artifact = STAGE_ARTIFACTS[stageKey];
+      }
       if (!artifact) {
         return {
           exitCode: 1,
           stdout: "",
-          stderr: `Unknown stage: ${stageId}`,
+          stderr: `Unknown stage/role: ${key}`,
           jsonEvents: [],
           timedOut: false,
           containerId: "",
         };
       }
+
+      // For build_worker/build_validator, inject the story_id from the dispatch
+      // message so the canned artifact matches the story being processed.
+      let artifactCopy = artifact;
+      if (key === "build_worker" || key === "build_validator") {
+        const storyMatch = opts.dispatchMessage.match(/(?:Implement|Validate) story\s+([^\s:]+):/);
+        const storyId = storyMatch ? storyMatch[1] : "E1.1";
+        artifactCopy = {
+          ...artifact,
+          artifact: { ...(artifact.artifact as Record<string, unknown>), story_id: storyId },
+        };
+      }
+
       return {
         exitCode: 0,
-        stdout: `Agent output for ${stageId}...\n<artifact>\n${JSON.stringify(artifact, null, 2)}\n</artifact>`,
+        stdout: `Agent output for ${key}...\n<artifact>\n${JSON.stringify(artifactCopy, null, 2)}\n</artifact>`,
         stderr: "",
         jsonEvents: [
           {
@@ -141,18 +174,16 @@ function makeMockSandbox() {
   };
 }
 
-// ─── A4.4: e2e is expected-to-fail ──────────────────────────────────────
-// At A4.4 the build stage is flipped from `agent_spec: agent-specs/build.yaml`
-// to `inner_loop + worker_spec + validator_spec`. This e2e's Engine is
-// constructed 5-arg (no BuildLoopRunner), its mock sandbox keys on `Stage:`
-// (returns the canned `build` artifact, not worker/validator artifacts), and
-// it has no canned WorkerOutput/ValidatorOutput. So the build-stage dispatch
-// hits the dispatcher's missing-runner guard → run escalates at build.
-// This is fixed in A4.6: the e2e gains a BuildLoopRunner, the mock sandbox keys
-// on `Role:` to return canned `build_worker`/`build_validator` artifacts, and
-// the canned spec artifact gains a `stories` array. The whole suite is
-// skipped until then; non-build stages and all non-e2e suites stay green.
-describe.skip("E2E: synthetic run through all 6 stages", () => {
+// ─── A4.6: e2e is live ───────────────────────────────────────────────────
+// The build stage is inner_loop + worker_spec + validator_spec (A4.4). The
+// Engine is constructed 6-arg (with a BuildLoopRunner wrapping the mock-sandbox
+// AgentStageRunner), the mock sandbox keys on `Role:` to return canned
+// `build_worker`/`build_validator` artifacts, and the canned spec artifact has
+// a `stories` array (8 entries). The build stage dispatches 8 stories × 2
+// (worker+validator) = 16 sandbox calls; the 5 non-build stages add 5 more =
+// 21 total. The BuildLoopRunner returns output_status "pass" when all 8
+// stories are done, mapping the run to "built" via the stage graph.
+describe("E2E: synthetic run through all 6 stages", () => {
   let tmpDir: string;
   let queue: SQLiteQueue;
   let storage: FileStorage;
@@ -170,7 +201,8 @@ describe.skip("E2E: synthetic run through all 6 stages", () => {
       localMode: true,
       repoRoot: REPO_ROOT,
     });
-    engine = new Engine(graph, queue, storage, runner, tmpDir);
+    const buildLoopRunner = new BuildLoopRunner(runner, storage, graph, queue, { repoRoot: REPO_ROOT });
+    engine = new Engine(graph, queue, storage, runner, tmpDir, buildLoopRunner);
   });
 
   afterEach(() => {
@@ -259,7 +291,7 @@ describe.skip("E2E: synthetic run through all 6 stages", () => {
     }
   });
 
-  it("the sandbox was called 6 times with the correct model and stage info", async () => {
+  it("the sandbox was called 21 times with the correct model and stage info", async () => {
     const runId = "run_e2e_005";
     engine.createRun(runId, "Build a SaaS app");
 
@@ -267,13 +299,35 @@ describe.skip("E2E: synthetic run through all 6 stages", () => {
       await engine.dispatchCycle();
     }
 
-    expect(mockSandbox.run).toHaveBeenCalledTimes(6);
+    // 5 non-build stages (frame/discover/plan/spec/ship) + 8 stories × 2 (worker+validator) = 21
+    expect(mockSandbox.run).toHaveBeenCalledTimes(21);
     const calls = (mockSandbox.run as ReturnType<typeof vi.fn>).mock.calls;
+
+    // Stage sequence: frame, discover, plan, spec, build×16, ship
     const stageIds = calls.map((c: [SandboxOptions]) => {
       const m = c[0].dispatchMessage.match(/Stage:\s*(\w+)/);
       return m ? m[1] : null;
     });
-    expect(stageIds).toEqual(["frame", "discover", "plan", "spec", "build", "ship"]);
+    expect(stageIds).toEqual([
+      "frame", "discover", "plan", "spec",
+      ...Array(16).fill("build"),
+      "ship",
+    ]);
+
+    // Role sequence: non-build roles match stage, build alternates worker/validator
+    const roles = calls.map((c: [SandboxOptions]) => {
+      const m = c[0].dispatchMessage.match(/Role:\s*(\w+)/);
+      return m ? m[1] : null;
+    });
+    const expectedBuildRoles: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      expectedBuildRoles.push("build_worker", "build_validator");
+    }
+    expect(roles).toEqual([
+      "frame", "discover", "plan", "spec",
+      ...expectedBuildRoles,
+      "ship",
+    ]);
 
     for (const c of calls as [SandboxOptions][]) {
       expect(c[0].model).toBe("openrouter/z-ai/glm-5.2");
