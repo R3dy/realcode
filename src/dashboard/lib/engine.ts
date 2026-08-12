@@ -68,6 +68,43 @@ export interface BuildState {
   containers: BuildContainerEntry[];
 }
 
+// ── Live-state types (A11.2 — realtime visibility for non-build stages) ──
+// Mirror src/engine/live-state.ts:14-51 exactly (field names, nullability).
+// The engine owns the source of truth; the dashboard only reads live.json.
+export interface LiveContainer {
+  container_id: string | null;
+  name: string;
+  role: string;
+  status: string;
+  started_at: number;
+  log_path: string;
+}
+
+export interface LiveTraceEvent {
+  kind: string;
+  stage: string;
+  agent: string;
+  content: string;
+  timestamp: number;
+  role?: string;
+  tool?: string;
+  tokens?: number;
+  cost_usd?: number;
+}
+
+export interface LiveState {
+  run_id: string;
+  stage: string | null;
+  status: string;
+  started_at: number;
+  updated_at: number;
+  container: LiveContainer | null;
+  events: LiveTraceEvent[];
+  tokens_total: number;
+  cost_usd: number;
+  failure_message?: string;
+}
+
 // Container view returned by /api/runs/[id]/containers — merges the explicit
 // `containers[]` array with per-story worker/validator container IDs (A4.2
 // populates worker_container_id/validator_container_id; A4.3 will populate
@@ -88,6 +125,7 @@ export interface RunDetailResponse {
   stages: Record<StageName, DetailStageStatus>;
   artifacts: Partial<Record<StageName, unknown>>;
   build_state?: BuildState;
+  live_state?: LiveState;
 }
 
 export class RunNotFoundError extends Error {
@@ -421,6 +459,18 @@ export function getEngine() {
       if (!fs.existsSync(fp)) return null;
       try {
         return JSON.parse(fs.readFileSync(fp, "utf8")) as BuildState;
+      } catch {
+        return null;
+      }
+    },
+    // ── Live-state helper (A11.2) ──
+    // Mirrors getBuildState's null-on-missing/corrupt contract (INV-4): a
+    // malformed live.json can never crash the dashboard.
+    getLiveState(runId: string): LiveState | null {
+      const fp = path.join(RUNS_DIR, runId, "live.json");
+      if (!fs.existsSync(fp)) return null;
+      try {
+        return JSON.parse(fs.readFileSync(fp, "utf8")) as LiveState;
       } catch {
         return null;
       }
