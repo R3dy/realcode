@@ -15,6 +15,7 @@
 | ADR-006 | Agent specs are self-contained -- no external file refs; context-discipline guards | Accepted |
 | ADR-007 | Workspace seeding excludes data/tests/node_modules/lockfiles | Accepted |
 | ADR-008 | fillTemplate truncates interpolated context at 8000 chars | Accepted |
+| ADR-009 | Engine-orchestrated build inner loop (supersedes ADR-001 spike refinement) | Accepted |
 
 ---
 
@@ -24,6 +25,7 @@
 **Decision:** Use headless opencode running inside a Docker sandbox container. The sandbox has the workspace mounted, the agent spec's tool allowlist enforced, and network egress to the LLM provider. The AgentStageRunner spawns `opencode` as a subprocess inside the container.
 **Consequences:** Isolation per run; tool allowlist enforced at the opencode level; the sandbox image must be pre-built (realcode-sandbox:latest). Alternative considered: direct API calls (rejected -- loses anymake's agent infrastructure).
 **Enforced in:** `src/agents/runner.ts` (AgentStageRunner), `src/sandbox/`.
+**Spike refinement superseded by ADR-009** (engine-orchestrated inner loop). Core Option B decision preserved.
 
 ## ADR-002: Stage graph is declarative YAML, never engine code
 **Status:** Accepted (2026-08-06, Phase 2)
@@ -76,6 +78,35 @@
 **Consequences:** No single interpolated value can exceed 8000 chars in the rendered prompt. Prior artifacts that exceed this lose their tail (the truncation marker is explicit). This guards against the plan-stage timeout root cause.
 **Enforced in:** `src/agents/runner.ts` (fillTemplate, lines 202-210).
 **Related:** ADR-006 (spec-level context discipline is the primary guard; this is the backstop).
+
+## ADR-009: Engine-orchestrated build inner loop (supersedes ADR-001 spike refinement)
+**Status:** Accepted (2026-08-11, issue #4)
+**Context:** ADR-001's spike refinement (planning-doc ADR-001, lines 83-85) specified that the
+primary agent inside the build sandbox dispatches anymake subagents via the Task tool. This proved
+infeasible: headless `opencode run --auto` mode does not expose the Task tool, so a single sandbox
+cannot spawn anymake's Orchestrator/Planner/Worker/Validator. The build stage collapsed to a single
+agent attempting the entire backlog in one session, escalating on non-trivial work (run_0ba334d1:
+17 stories, 1.27M tokens, 20-min timeout, escalated). The `inner_loop: anymake-build-loop` field in
+`stage-graph.yaml` was loaded but never acted on.
+**Decision:** The realcode ENGINE orchestrates the build inner loop. For each story (serially, per
+planning-doc ADR-007): the engine spawns a Worker sandbox (one container, one story), then a Validator
+sandbox (one container, one story). Each sandbox is a headless `opencode run --auto` invocation
+(ADR-001's core Option B decision preserved). The engine reads the spec artifact's structured
+`stories[]` array, tracks per-story state in `build-state.json`, and aggregates results into the
+build artifact. The Planner and Product Owner Proxy roles from `pipeline-design.md` Stage 5 are
+dropped (the Worker receives the story + prior artifacts directly; there is no per-story re-planning
+gate for MVP). Implementation failures escalate immediately (deviates from planning-doc ADR-007's
+max-1 re-dispatch — see issue #4 plan §4.2 reconciliation note).
+**Consequences:** The build stage can ship non-trivial backlogs. Per-story cost tracking, per-story
+retry ceilings, and per-story container isolation are enabled. The operator's opencode environment
+(config, skills, MCP servers) is inherited by each sandbox via a configurable mount (issue #4 plan
+§4.6) — authorized by issue #4's explicit request, with a startup secret-scan safeguard (§4.6.1).
+**Supersedes:** ADR-001's spike refinement mechanism (in-sandbox Task-tool dispatch). ADR-001's core
+Option B decision (headless opencode-in-sandbox) stands.
+**Enforced in:** `src/engine/build-loop.ts`, `src/engine/dispatcher.ts`, `src/engine/engine-loop.ts`,
+`src/agents/runner.ts` (specOverride/schemaKey/extraContext), `stage-graph.yaml` (worker_spec/validator_spec).
+**Related:** planning-doc ADR-007 (retry matrix — deviates on implementation failure),
+planning-doc ADR-003 (sandbox isolation — opencode-config mount is a new surface, safeguarded by §4.6.1).
 
 ---
 
