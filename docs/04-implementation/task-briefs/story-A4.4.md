@@ -84,12 +84,12 @@ Before this story: A4.1 (Contracts), A4.2 (Engine), A4.3 (Sandbox) — all `✅ 
 
 **result:** success
 **failure_type:** *(omit if success)*
-**pr_url:** *(filled after push)*
-**pr_number:** 4
+**pr_url:** https://github.com/R3dy/realcode/pull/8
+**pr_number:** 8
 **branch:** story/A4.4-agent-specs-graph-flip
 **base:** issue/4-multi-container-build-loop
 **commits:**
-- *(filled after commit)*
+- 62265e5 feat(A4.4): worker.yaml + validator.yaml + stage-graph build-stage flip + security tests (#4)
 **test_output:** passed (167 tests + 6 e2e skipped; 15 test files passed | 1 skipped; 16 total. 158 baseline + 9 new agent-spec tests = 167. The 6 e2e tests are `describe.skip`'d — they go red at A4.4 because the build stage now uses `inner_loop` but the e2e's mock sandbox has no BuildLoopRunner / canned WorkerOutput/ValidatorOutput. Fixed in A4.6.)
 **lint_output:** clean (0 errors; 6 pre-existing warnings unchanged — none in A4.4 files)
 **typecheck:** clean (tsc --noEmit exits 0)
