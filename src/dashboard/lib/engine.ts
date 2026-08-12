@@ -45,7 +45,7 @@ const RUNS_DIR = path.join(DATA_DIR, "runs");
 const QUEUE_PATH = path.join(DATA_DIR, "queue.db");
 
 const MISSION_CONTROL_ROOT = process.env.MISSION_CONTROL_ROOT || "/home/royce/mission-control";
-const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.\-]+)\s*\]/i;
+const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.-]+)\s*\]/i;
 // "data" is CRITICAL: the realcode repo's data/ contains data/workspaces/<runId>/
 // (the workspace being created), so copying it causes infinite recursion.
 // "tests" and lockfiles reduce context bloat that inflates the sandbox agent's prompt.

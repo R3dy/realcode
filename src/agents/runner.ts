@@ -13,6 +13,8 @@ import {
   SpecOutput,
   BuildOutput,
   ShipOutput,
+  WorkerOutput,
+  ValidatorOutput,
 } from "../schemas/index.js";
 
 const STAGE_SCHEMAS: Record<string, ZodTypeAny> = {
@@ -22,6 +24,8 @@ const STAGE_SCHEMAS: Record<string, ZodTypeAny> = {
   spec: SpecOutput,
   build: BuildOutput,
   ship: ShipOutput,
+  build_worker: WorkerOutput,
+  build_validator: ValidatorOutput,
 };
 
 const TIER_ENV: Record<number, string> = {
@@ -50,20 +54,32 @@ export class AgentStageRunner implements StageRunner {
     private options: AgentStageRunnerOptions,
   ) {}
 
-  async run(item: WorkItem, stage: StageEntry, workspacePath: string) {
-    if (!stage.agent_spec) {
+  async run(
+    item: WorkItem,
+    stage: StageEntry,
+    workspacePath: string,
+    opts?: {
+      specOverride?: string;
+      schemaKey?: string;
+      extraContext?: Record<string, unknown>;
+    },
+  ) {
+    if (!stage.agent_spec && !opts?.specOverride) {
       throw new Error(
-        `Stage '${stage.id}' has no agent_spec — cannot dispatch via AgentStageRunner. ` +
+        `Stage '${stage.id}' has no agent_spec and no specOverride provided — cannot dispatch via AgentStageRunner. ` +
           `Inner-loop stages require a BuildLoopRunner (6th Engine constructor param).`,
       );
     }
-    const specPath = path.resolve(this.options.repoRoot, stage.agent_spec);
+    const specPath = path.resolve(this.options.repoRoot, opts?.specOverride ?? stage.agent_spec!);
     const spec = loadAgentSpec(specPath);
     const model = this.resolveModel(stage, spec);
     const priorArtifacts = this.gatherPriorArtifacts(item.run_id, stage.id, item.payload);
-    const userPrompt = this.fillTemplate(spec.user_prompt_template, priorArtifacts);
-    const schemaJson = this.getStageSchemaJson(stage.id);
-    const dispatchMessage = this.buildDispatchMessage(spec, userPrompt, schemaJson, stage);
+    const ctx = { ...priorArtifacts, ...(opts?.extraContext ?? {}) };
+    const userPrompt = this.fillTemplate(spec.user_prompt_template, ctx);
+    const schemaKey = opts?.schemaKey ?? stage.id;
+    const schemaJson = this.getStageSchemaJson(schemaKey);
+    const role = (opts?.extraContext?.role as string | undefined) ?? stage.id;
+    const dispatchMessage = this.buildDispatchMessage(spec, userPrompt, schemaJson, stage, role);
     const traceId = (item.payload.trace_id as string) || item.run_id;
 
     const result = await this.sandbox.run({
@@ -87,6 +103,7 @@ export class AgentStageRunner implements StageRunner {
         },
         token_usage: tokenUsage,
         trace_id: traceId,
+        jsonEvents: result.jsonEvents,
       };
     }
 
@@ -100,6 +117,7 @@ export class AgentStageRunner implements StageRunner {
         },
         token_usage: tokenUsage,
         trace_id: traceId,
+        jsonEvents: result.jsonEvents,
       };
     }
 
@@ -108,17 +126,18 @@ export class AgentStageRunner implements StageRunner {
       run_id: item.run_id,
       trace_id: traceId,
       token_usage: tokenUsage,
-      stage: stage.id,
+      stage: schemaKey,
       ...partialArtifact,
     };
 
-    const schema = STAGE_SCHEMAS[stage.id];
+    const schema = STAGE_SCHEMAS[schemaKey];
     if (!schema) {
       return {
         output_status: "escalate" as const,
-        artifact: { error: `No schema registered for stage ${stage.id}` },
+        artifact: { error: `No schema registered for stage ${schemaKey}` },
         token_usage: tokenUsage,
         trace_id: traceId,
+        jsonEvents: result.jsonEvents,
       };
     }
 
@@ -127,12 +146,13 @@ export class AgentStageRunner implements StageRunner {
       return {
         output_status: "escalate" as const,
         artifact: {
-          error: `Artifact validation failed for stage ${stage.id}`,
+          error: `Artifact validation failed for stage ${schemaKey}`,
           issues: validated.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
           raw_artifact: partialArtifact,
         },
         token_usage: tokenUsage,
         trace_id: traceId,
+        jsonEvents: result.jsonEvents,
       };
     }
 
@@ -141,6 +161,7 @@ export class AgentStageRunner implements StageRunner {
       artifact: validated.data.artifact as Record<string, unknown>,
       token_usage: tokenUsage,
       trace_id: validated.data.trace_id as string,
+      jsonEvents: result.jsonEvents,
     };
   }
 
@@ -308,7 +329,7 @@ export class AgentStageRunner implements StageRunner {
     return JSON.stringify(zodToJsonSchema(schema), null, 2);
   }
 
-  buildDispatchMessage(spec: AgentSpec, userPrompt: string, schemaJson: string, stage: StageEntry): string {
+  buildDispatchMessage(spec: AgentSpec, userPrompt: string, schemaJson: string, stage: StageEntry, role?: string): string {
     return [
       spec.system_prompt.trim(),
       "",
@@ -319,6 +340,7 @@ export class AgentStageRunner implements StageRunner {
       "---",
       "",
       `Stage: ${stage.id} (anymake Phase ${spec.anymake_phase})`,
+      `Role: ${role ?? stage.id}`,
       `Model tier: ${spec.model_tier}`,
       `Permission mode: ${spec.permission_mode}`,
       "",

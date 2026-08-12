@@ -2,3 +2,5 @@ export { loadStageGraph, findStage, findStageForStatus, applyTransition, GraphVa
 export type { StageGraph, StageEntry, Transition } from "./stage-graph.js";
 export { Engine } from "./dispatcher.js";
 export type { ControlDoc, StageRunner, RunRecord } from "./dispatcher.js";
+export { BuildLoopRunner } from "./build-loop.js";
+export type { BuildLoopRunnerOptions } from "./build-loop.js";

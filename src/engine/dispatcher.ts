@@ -6,7 +6,7 @@ import type { Queue, Storage, WorkItem } from "../backend/types.js";
 import { startStageSpan, endSpan } from "./tracing.js";
 
 const MISSION_CONTROL_ROOT = process.env.MISSION_CONTROL_ROOT || "/home/royce/mission-control";
-const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.\-]+)\s*\]/i;
+const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.-]+)\s*\]/i;
 
 interface TargetParseResult {
   cleanIdea: string;
@@ -65,6 +65,7 @@ export interface StageRunner {
     artifact: Record<string, unknown>;
     token_usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; estimated_cost_usd: number };
     trace_id: string;
+    jsonEvents?: unknown[];
   }>;
 }
 

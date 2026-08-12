@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { randomUUID } from "crypto";
 import * as path from "path";
 import * as fs from "fs";
-import { loadStageGraph, Engine } from "../engine/index.js";
+import { loadStageGraph, Engine, BuildLoopRunner } from "../engine/index.js";
 import { SQLiteQueue, FileStorage } from "../backend/index.js";
 import { SandboxRunner } from "../sandbox/index.js";
 import { AgentStageRunner } from "../agents/index.js";
@@ -30,8 +30,9 @@ function getEngine(dataDir?: string, graphPath?: string) {
     localMode: true,
     repoRoot: process.cwd(),
   });
+  const buildLoop = new BuildLoopRunner(runner, storage, stageGraph, queue, { repoRoot: process.cwd() });
 
-  return { engine: new Engine(stageGraph, queue, storage, runner, dir), stageGraph, queue, storage };
+  return { engine: new Engine(stageGraph, queue, storage, runner, dir, buildLoop), stageGraph, queue, storage };
 }
 
 program
