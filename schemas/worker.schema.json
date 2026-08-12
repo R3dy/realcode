@@ -1,7 +1,7 @@
 {
-  "$ref": "#/definitions/SpecOutput",
+  "$ref": "#/definitions/WorkerOutput",
   "definitions": {
-    "SpecOutput": {
+    "WorkerOutput": {
       "type": "object",
       "properties": {
         "schema_version": {
@@ -58,89 +58,87 @@
         },
         "stage": {
           "type": "string",
-          "const": "spec"
+          "const": "build_worker"
         },
         "status": {
           "type": "string",
           "enum": [
-            "specified",
-            "spec_failed"
+            "success",
+            "failed",
+            "escalated"
           ]
-        },
-        "revisions_used": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 2,
-          "default": 0
         },
         "artifact": {
           "type": "object",
           "properties": {
-            "epics_md": {
+            "story_id": {
               "type": "string",
               "minLength": 1
             },
-            "backlog_md": {
+            "result": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failed"
+              ]
+            },
+            "failure_type": {
+              "type": "string",
+              "enum": [
+                "environment",
+                "implementation"
+              ]
+            },
+            "failure_description": {
+              "type": "string"
+            },
+            "branch": {
               "type": "string",
               "minLength": 1
             },
-            "dependency_graph": {
-              "type": "string",
-              "minLength": 1
-            },
-            "story_count": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "stories": {
+            "commits": {
               "type": "array",
               "items": {
                 "type": "object",
                 "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
+                  "sha": {
+                    "type": "string"
                   },
-                  "title": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "epic": {
-                    "type": "string",
-                    "default": ""
-                  },
-                  "acceptance_criteria": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "minItems": 1
-                  },
-                  "depends_on": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "default": []
+                  "message": {
+                    "type": "string"
                   }
                 },
                 "required": [
-                  "id",
-                  "title",
-                  "acceptance_criteria"
+                  "sha",
+                  "message"
                 ],
                 "additionalProperties": false
               },
-              "minItems": 1
+              "default": []
+            },
+            "test_output": {
+              "type": "string",
+              "default": ""
+            },
+            "test_passed": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "test_failed": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "notes": {
+              "type": "string",
+              "default": ""
             }
           },
           "required": [
-            "epics_md",
-            "backlog_md",
-            "dependency_graph",
-            "story_count",
-            "stories"
+            "story_id",
+            "result",
+            "branch"
           ],
           "additionalProperties": false
         }
