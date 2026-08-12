@@ -24,7 +24,9 @@ const StageEntry = z.object({
   model_tier: z.number().int().min(1).max(3),
   permission_mode: z.enum(["unattended", "unattended_with_approval_on_deploy"]),
   artifact_schema: z.string().min(1),
-  agent_spec: z.string().min(1),
+  agent_spec: z.string().min(1).optional(),
+  worker_spec: z.string().optional(),
+  validator_spec: z.string().optional(),
 });
 
 const StageGraph = z.object({
@@ -103,13 +105,42 @@ function validateGraph(graph: StageGraph, baseDir: string): void {
     }
   }
 
-  // 4. artifact_schema + agent_spec paths resolve
+  // 4. artifact_schema + agent_spec/inner_loop XOR rule + path resolution
   for (const stage of graph.stages) {
     if (!fs.existsSync(path.resolve(baseDir, stage.artifact_schema))) {
       errors.push(`Stage ${stage.id}: artifact_schema path '${stage.artifact_schema}' does not exist`);
     }
-    if (!fs.existsSync(path.resolve(baseDir, stage.agent_spec))) {
-      errors.push(`Stage ${stage.id}: agent_spec path '${stage.agent_spec}' does not exist`);
+    const hasAgentSpec = stage.agent_spec !== undefined;
+    const hasInnerLoop = stage.inner_loop !== undefined;
+    const hasWorkerSpec = stage.worker_spec !== undefined;
+    const hasValidatorSpec = stage.validator_spec !== undefined;
+    // The XOR is between agent_spec (old dispatch) and the inner_loop TRIAD
+    // (inner_loop + worker_spec + validator_spec — the new dispatch). A stage
+    // with agent_spec + a bare/dormant inner_loop (no worker/validator specs)
+    // is valid: inner_loop is dormant until the triad is completed (A4.4 flip).
+    const hasTriad = hasInnerLoop && hasWorkerSpec && hasValidatorSpec;
+    if (hasAgentSpec && hasTriad) {
+      errors.push(`Stage ${stage.id}: cannot have both agent_spec and inner_loop (use one or the other)`);
+    }
+    if (!hasAgentSpec && !hasInnerLoop) {
+      errors.push(`Stage ${stage.id}: must have either agent_spec or inner_loop`);
+    }
+    if (hasInnerLoop && !hasAgentSpec) {
+      if (!hasWorkerSpec || !hasValidatorSpec) {
+        errors.push(`Stage ${stage.id}: inner_loop requires both worker_spec and validator_spec`);
+      } else {
+        if (!fs.existsSync(path.resolve(baseDir, stage.worker_spec!))) {
+          errors.push(`Stage ${stage.id}: worker_spec path '${stage.worker_spec}' does not exist`);
+        }
+        if (!fs.existsSync(path.resolve(baseDir, stage.validator_spec!))) {
+          errors.push(`Stage ${stage.id}: validator_spec path '${stage.validator_spec}' does not exist`);
+        }
+      }
+    }
+    if (hasAgentSpec) {
+      if (!fs.existsSync(path.resolve(baseDir, stage.agent_spec!))) {
+        errors.push(`Stage ${stage.id}: agent_spec path '${stage.agent_spec}' does not exist`);
+      }
     }
   }
 
