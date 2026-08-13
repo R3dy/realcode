@@ -34,12 +34,14 @@ export const ProjectType = z.enum([
 ]);
 
 export const StageName = z.enum([
+  "conductor",
   "frame",
   "discover",
   "plan",
   "spec",
   "build",
   "ship",
+  "change",
 ]);
 
 export const StageStatus = z.enum([
@@ -52,6 +54,9 @@ export const StageStatus = z.enum([
 
 export const RunStatus = z.enum([
   "intake",
+  "classified_new",
+  "classified_change",
+  "conductor_failed",
   "framed",
   "framing_failed",
   "discovered",
@@ -65,6 +70,7 @@ export const RunStatus = z.enum([
   "escalated",
   "shipped",
   "ship_failed",
+  "change_failed",
   "paused_cost_cap",
   "paused_step",
   "claimed",

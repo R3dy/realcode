@@ -1,7 +1,7 @@
 {
-  "$ref": "#/definitions/ShipOutput",
+  "$ref": "#/definitions/ConductorOutput",
   "definitions": {
-    "ShipOutput": {
+    "ConductorOutput": {
       "type": "object",
       "properties": {
         "schema_version": {
@@ -58,58 +58,65 @@
         },
         "stage": {
           "type": "string",
-          "const": "ship"
+          "const": "conductor"
         },
         "status": {
           "type": "string",
           "enum": [
-            "shipped",
-            "ship_failed"
+            "classified_new",
+            "classified_change",
+            "conductor_failed"
           ]
         },
         "revisions_used": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 2,
+          "maximum": 0,
           "default": 0
         },
         "artifact": {
           "type": "object",
           "properties": {
-            "live_url": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uri"
-                },
-                {
-                  "type": "null"
-                }
+            "intent": {
+              "type": "string",
+              "enum": [
+                "new",
+                "change"
               ]
             },
-            "repo_url": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uri"
-                },
-                {
-                  "type": "null"
-                }
+            "target_project": {
+              "type": [
+                "string",
+                "null"
               ]
             },
-            "launch_checklist_md": {
+            "flow_type": {
+              "type": "string",
+              "enum": [
+                "full",
+                "agile"
+              ]
+            },
+            "clean_idea": {
               "type": "string",
               "minLength": 1
             },
-            "metrics_dashboard_md": {
+            "classification_reasoning": {
               "type": "string",
-              "minLength": 1
+              "default": ""
+            },
+            "available_projects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
             }
           },
           "required": [
-            "launch_checklist_md",
-            "metrics_dashboard_md"
+            "intent",
+            "flow_type",
+            "clean_idea"
           ],
           "additionalProperties": false
         }

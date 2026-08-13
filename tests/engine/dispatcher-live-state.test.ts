@@ -45,7 +45,7 @@ afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
-function setupNonBuildItem(status = "intake"): { runId: string; workspace: string } {
+function setupNonBuildItem(status = "classified_new"): { runId: string; workspace: string } {
   const runId = `run_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const workspace = `${tmpDir}/workspaces/${runId}`;
   fs.mkdirSync(workspace, { recursive: true });

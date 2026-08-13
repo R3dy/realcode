@@ -75,11 +75,12 @@ describe("deriveStageStatuses (pure function)", () => {
     expect(result.ship).toBe("not-reached");
   });
 
-  it("returns pending for the frame stage of an intake run", () => {
+  it("returns pending for the conductor stage of an intake run", () => {
     const run = { status: "intake" } as RunRecord;
     const present = new Set<StageName>([]);
     const result = deriveStageStatuses(run, present);
-    expect(result.frame).toBe("pending");
+    expect(result.conductor).toBe("pending");
+    expect(result.frame).toBe("not-reached");
     expect(result.discover).toBe("not-reached");
     expect(result.ship).toBe("not-reached");
   });

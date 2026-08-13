@@ -1,4 +1,4 @@
-export type StageName = "frame" | "discover" | "plan" | "spec" | "build" | "ship";
+export type StageName = "conductor" | "frame" | "discover" | "plan" | "spec" | "build" | "ship" | "change";
 export type StageStatus = "pass" | "running" | "fail" | "pause" | "pending";
 export type RunStatus =
   | "running"
@@ -47,7 +47,7 @@ export interface Run {
   escalationReason?: string;
 }
 
-export const STAGE_ORDER: StageName[] = ["frame", "discover", "plan", "spec", "build", "ship"];
+export const STAGE_ORDER: StageName[] = ["conductor", "frame", "discover", "plan", "spec", "build", "ship", "change"];
 
 const m = (ms: number) => ms;
 const k = (n: number) => n;
@@ -200,12 +200,14 @@ function enrichTrace(r: Run): Run {
 
 function turnsFor(run: Run, s: Stage): Turn[] {
   const base: Record<StageName, { agent: string; model: string; note: string }> = {
+    conductor: { agent: "conductor", model: "economy (tier 3)", note: "Classified intent: new project." },
     frame: { agent: "anymake-product-owner-proxy", model: "claude-opus-5 (tier 1)", note: "Framed scope: CLI tool, MVP scope locked, success = ships in <25m." },
     discover: { agent: "anymake-discover", model: "claude-sonnet-5 (tier 2)", note: "Prior-art pass (pandoc, md-to-pdf); risk: no runaway." },
     plan: { agent: "anymake-plan", model: "claude-opus-5 (tier 1)", note: "PRD + ADR-001 (arch: Node, commander.js, Playwright for watch)." },
     spec: { agent: "anymake-spec", model: "claude-sonnet-5 (tier 2)", note: "Backlog: 9 stories, dependency graph acyclic." },
     build: { agent: "anymake-worker", model: "claude-haiku-4.5 (tier 3)", note: "Executing story 4.2: PDF render via headless Chromium." },
     ship: { agent: "anymake-deploy", model: "claude-sonnet-5 (tier 2)", note: "Published to npm + smoke-tested the binary." },
+    change: { agent: "change-agent", model: "claude-sonnet-5 (tier 2)", note: "Applied change to existing project." },
   };
   const b = base[s.name];
   const isFail = s.status === "fail";

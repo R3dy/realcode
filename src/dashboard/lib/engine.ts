@@ -277,7 +277,10 @@ function getQueueDb(): Database.Database {
 // Maps a run's top-level status + which stage artifacts are present on disk
 // to a per-stage DetailStageStatus for the detail page.
 const STATUS_TO_STAGE: Record<string, StageName> = {
-  intake: "frame",
+  intake: "conductor",
+  classified_new: "frame",
+  classified_change: "change",
+  conductor_failed: "conductor",
   framing_failed: "frame",
   framed: "discover",
   discovered: "plan",
@@ -291,13 +294,14 @@ const STATUS_TO_STAGE: Record<string, StageName> = {
   escalated: "build",
   shipped: "ship",
   ship_failed: "ship",
+  change_failed: "change",
 };
 
 export function deriveStageStatuses(
   run: RunRecord,
   presentArtifacts: Set<StageName>,
 ): Record<StageName, DetailStageStatus> {
-  const current = STATUS_TO_STAGE[run.status] ?? "frame";
+  const current = STATUS_TO_STAGE[run.status] ?? "conductor";
   const currentIdx = STAGE_ORDER.indexOf(current);
   const isFailed = run.status.endsWith("_failed");
   const isShipped = run.status === "shipped";
@@ -307,14 +311,14 @@ export function deriveStageStatuses(
   for (let i = 0; i < STAGE_ORDER.length; i++) {
     const stage = STAGE_ORDER[i];
     if (isShipped) {
+      // For the agile flow (change), stages after 'change' don't apply.
+      // For the full flow, 'change' and 'conductor' are just 'pass'.
       result[stage] = "pass";
     } else if (stage === failedStage) {
       result[stage] = "fail";
     } else if (i < currentIdx) {
       result[stage] = "pass";
     } else if (i === currentIdx) {
-      // The in-flight stage: "running" unless it's the failed stage (handled above)
-      // or the run is still in intake (pending, not started yet)
       result[stage] = run.status === "intake" ? "pending" : isFailed ? "fail" : "running";
     } else {
       result[stage] = "not-reached";
@@ -416,7 +420,7 @@ export function getEngine() {
       ).run(
         crypto.randomUUID(),
         runId,
-        "frame",
+        "conductor",
         "intake",
         JSON.stringify({ idea: cleanIdea, workspace, ...(targetProject ? { target_project: targetProject } : {}) }),
         now,

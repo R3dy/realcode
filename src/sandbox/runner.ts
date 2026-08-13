@@ -66,6 +66,30 @@ export interface SandboxResult {
   containerId: string;
 }
 
+/**
+ * Translate a container-internal path to the host path for Docker volume mounts.
+ * Handles two mount prefixes:
+ *   1. /data → REALCODE_HOST_DATA_DIR (the engine's data volume)
+ *   2. /mission-control → REALCODE_HOST_MISSION_CONTROL_ROOT (the mission-control root)
+ * The second is used by the change flow's live-mount feature, where the
+ * workspace path is the REAL project repo directory (not an ephemeral copy).
+ */
+function translateToHostPath(containerPath: string): string {
+  const containerDataDir = process.env.REALCODE_DATA_DIR || "/data";
+  const hostDataDir = process.env.REALCODE_HOST_DATA_DIR || containerDataDir;
+  const containerMcRoot = process.env.MISSION_CONTROL_ROOT || "/mission-control";
+  const hostMcRoot = process.env.REALCODE_HOST_MISSION_CONTROL_ROOT || containerMcRoot;
+
+  let hostPath = containerPath;
+  if (hostDataDir !== containerDataDir) {
+    hostPath = hostPath.replace(containerDataDir, hostDataDir);
+  }
+  if (hostMcRoot !== containerMcRoot) {
+    hostPath = hostPath.replace(containerMcRoot, hostMcRoot);
+  }
+  return hostPath;
+}
+
 export class SandboxRunner {
   constructor(private opencodeBin: string = "opencode", private hostDataDir?: string) {}
 
@@ -106,11 +130,9 @@ export class SandboxRunner {
     // Translate the workspace path from container-internal to host path.
     // The engine runs inside a container with /data mounted from ./data on the host.
     // When spawning sibling containers, Docker needs the HOST path for volume mounts.
-    const containerDataDir = process.env.REALCODE_DATA_DIR || "/data";
-    const hostDataDir = this.hostDataDir || process.env.REALCODE_HOST_DATA_DIR || containerDataDir;
-    const hostWorkspacePath = hostDataDir === containerDataDir
-      ? opts.workspacePath
-      : opts.workspacePath.replace(containerDataDir, hostDataDir);
+    // Also handles /mission-control → host mission-control root translation
+    // (used by the change flow's live-mount feature).
+    const hostWorkspacePath = translateToHostPath(opts.workspacePath);
 
     // ─── opencode-config inheritance (A4.3) ──────────────────────────────
     // The operator's opencode config dir (~/.config/opencode on the host) is
@@ -238,7 +260,7 @@ export class SandboxRunner {
         // unique log file (previously all build workers shared stage-build-0.log
         // and overwrote each other's logs).
         logFilePath = path.join(
-          containerDataDir,
+          process.env.REALCODE_DATA_DIR || "/data",
           "runs", opts.runId, "containers",
           `stage-${stageId}-${storyId}-${containerAttempt}.log`,
         );

@@ -32,7 +32,7 @@ describe("Security: credential isolation", () => {
       };
 
       const runner = new AgentStageRunner(mockSandbox as unknown as SandboxRunner, storage, graph, { repoRoot: REPO_ROOT });
-      const stage = graph.stages[0];
+      const stage = graph.stages[1]; // frame (skip conductor at [0])
       await runner.run(
         { id: "i1", run_id: "r1", stage: "frame", status: "intake", retry_count: 0, worker_id: "w", lease_expires_at: null, payload: { idea: "test" }, created_at: 0, updated_at: 0 },
         stage,
@@ -190,9 +190,11 @@ describe("Security: tool allowlist enforcement", () => {
     expect(spec.tool_allowlist).not.toContain("WebFetch");
   });
 
-  it("every stage satisfies the XOR rule (agent_spec OR inner_loop triad)", () => {
+  it("every stage satisfies the XOR rule (agent_spec OR inner_loop triad, OR conductor)", () => {
     const graph = loadStageGraph(GRAPH_PATH);
     for (const stage of graph.stages) {
+      // Conductor stages use a direct LLM call — no agent_spec or inner_loop needed
+      if (stage.conductor) continue;
       const hasAgentSpec = stage.agent_spec !== undefined;
       const hasInnerLoop = stage.inner_loop !== undefined;
       const hasWorkerSpec = stage.worker_spec !== undefined;
@@ -209,6 +211,11 @@ describe("Security: tool allowlist enforcement", () => {
     expect(buildStage.inner_loop).toBeDefined();
     expect(buildStage.worker_spec).toBeDefined();
     expect(buildStage.validator_spec).toBeDefined();
+    // The conductor stage is flagged conductor:true and has no agent_spec/inner_loop
+    const conductorStage = graph.stages.find((s) => s.id === "conductor")!;
+    expect(conductorStage.conductor).toBe(true);
+    expect(conductorStage.agent_spec).toBeUndefined();
+    expect(conductorStage.inner_loop).toBeUndefined();
   });
 });
 

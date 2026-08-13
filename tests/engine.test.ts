@@ -8,9 +8,9 @@ describe("Stage graph loader", () => {
   it("loads and validates the real stage-graph.yaml", () => {
     const graph = loadStageGraph(GRAPH_PATH);
     expect(graph.version).toBe(1);
-    expect(graph.stages.length).toBe(6);
+    expect(graph.stages.length).toBe(8);
     expect(graph.stages.map((s) => s.id)).toEqual([
-      "frame", "discover", "plan", "spec", "build", "ship",
+      "conductor", "frame", "discover", "plan", "spec", "build", "ship", "change",
     ]);
   });
 

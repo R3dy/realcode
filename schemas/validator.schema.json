@@ -84,7 +84,10 @@
               ]
             },
             "escalation_type": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "criteria_results": {
               "type": "array",

@@ -5,6 +5,7 @@ import { findStageForStatus, applyTransition } from "./stage-graph.js";
 import type { Queue, Storage, WorkItem } from "../backend/types.js";
 import { startStageSpan, endSpan } from "./tracing.js";
 import { writeLiveState, readLiveState, flushLiveEvents } from "./live-state.js";
+import { classifyIntent, resolveLiveWorkspace, listAvailableProjects } from "./conductor.js";
 
 const MISSION_CONTROL_ROOT = process.env.MISSION_CONTROL_ROOT || "/home/royce/mission-control";
 const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.-]+)\s*\]/i;
@@ -120,7 +121,7 @@ export class Engine {
     this.storage.write(`${RUNS_PREFIX}/${runId}/run.json`, JSON.stringify(run, null, 2));
     this.queue.publish({
       run_id: runId,
-      stage: "frame",
+      stage: "conductor",
       status: "intake",
       payload: { idea: cleanIdea, workspace, ...(targetProject ? { target_project: targetProject } : {}) },
     });
@@ -214,6 +215,83 @@ export class Engine {
       if (!stage) {
         this.queue.release(item.id, "escalated");
         continue;
+      }
+
+      // ─── Conductor stage: direct LLM call (no container) ──────────────
+      // The conductor classifies the request as new_project vs change and
+      // branches the flow. For change flows, it also resolves the live
+      // workspace path (the real project repo, not an ephemeral copy).
+      if (stage.conductor) {
+        try {
+          const idea = (item.payload.idea as string) || run.idea;
+          const classification = await classifyIntent(idea);
+
+          // Update the run with the classification + workspace path
+          run.spent_usd += classification.token_usage.estimated_cost_usd;
+          if (classification.flow_type === "agile" && classification.target_project) {
+            run.workspace_path = resolveLiveWorkspace(classification.target_project);
+            run.idea = classification.clean_idea;
+          }
+          this.updateRun(run);
+
+          // Store the conductor artifact
+          const gateVerdict = classification.flow_type === "agile" ? "classify_change" : "classify_new";
+          const status = classification.flow_type === "agile" ? "classified_change" : "classified_new";
+          this.storage.write(
+            `${RUNS_PREFIX}/${item.run_id}/conductor.json`,
+            JSON.stringify({
+              schema_version: 1,
+              run_id: item.run_id,
+              trace_id: item.run_id,
+              stage: "conductor",
+              gate_verdict: gateVerdict,
+              gate_notes: classification.reasoning,
+              token_usage: classification.token_usage,
+              status,
+              revisions_used: 0,
+              artifact: {
+                intent: classification.intent,
+                target_project: classification.target_project,
+                flow_type: classification.flow_type,
+                clean_idea: classification.clean_idea,
+                classification_reasoning: classification.reasoning,
+                available_projects: classification.available_projects,
+              },
+            }, null, 2),
+          );
+
+          // Update the work item payload with classification info
+          item.payload.target_project = classification.target_project;
+          item.payload.flow_type = classification.flow_type;
+          item.payload.idea = classification.clean_idea;
+
+          this.queue.release(item.id, status);
+          this.setRunStatus(run, status);
+          dispatched++;
+          if (control.run_mode === "step") {
+            this.setControlDoc({ run_mode: "paused" }, "step-mode");
+            break;
+          }
+          continue;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[dispatcher] conductor failed: ${msg}`);
+          this.queue.release(item.id, "conductor_failed");
+          this.setRunStatus(run, "conductor_failed");
+          dispatched++;
+          continue;
+        }
+      }
+
+      // ─── Live-mount: resolve workspace for change flow ────────────────
+      // When the change stage is dispatched, ensure the workspace path
+      // points to the real project repo (set by the conductor).
+      if (stage.live_mount && item.payload.target_project) {
+        const livePath = resolveLiveWorkspace(item.payload.target_project as string);
+        if (fs.existsSync(livePath)) {
+          run.workspace_path = livePath;
+          this.updateRun(run);
+        }
       }
 
       const stageSpan = startStageSpan(item.run_id, stage.id, "");

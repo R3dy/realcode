@@ -183,13 +183,14 @@ function makeMockSandbox() {
 // (worker+validator) = 16 sandbox calls; the 5 non-build stages add 5 more =
 // 21 total. The BuildLoopRunner returns output_status "pass" when all 8
 // stories are done, mapping the run to "built" via the stage graph.
-describe("E2E: synthetic run through all 6 stages", () => {
+describe("E2E: synthetic run through all stages (conductor + 6 full-flow stages)", () => {
   let tmpDir: string;
   let queue: SQLiteQueue;
   let storage: FileStorage;
   let graph: StageGraph;
   let engine: Engine;
   let mockSandbox: ReturnType<typeof makeMockSandbox>;
+  let oldApiKey: string | undefined;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "realcode-e2e-"));
@@ -203,21 +204,26 @@ describe("E2E: synthetic run through all 6 stages", () => {
     });
     const buildLoopRunner = new BuildLoopRunner(runner, storage, graph, queue, { repoRoot: REPO_ROOT });
     engine = new Engine(graph, queue, storage, runner, tmpDir, buildLoopRunner);
+    // Ensure the conductor defaults to "new" (full flow) without making LLM calls
+    oldApiKey = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
   });
 
   afterEach(() => {
+    if (oldApiKey !== undefined) process.env.OPENROUTER_API_KEY = oldApiKey;
     queue.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("moves a work item from intake to shipped through all 6 stages", async () => {
+  it("moves a work item from intake to shipped through conductor + 6 full-flow stages", async () => {
     const runId = "run_e2e_001";
     const idea = "Build a SaaS for personal finance management";
     engine.createRun(runId, idea);
 
     let dispatched = 0;
     const stageSequence: string[] = [];
-    for (let i = 0; i < 6; i++) {
+    // 7 dispatch cycles: conductor + frame + discover + plan + spec + build + ship
+    for (let i = 0; i < 7; i++) {
       const count = await engine.dispatchCycle();
       dispatched += count;
       const run = engine.getRun(runId)!;
@@ -226,9 +232,10 @@ describe("E2E: synthetic run through all 6 stages", () => {
 
     const finalRun = engine.getRun(runId)!;
     expect(finalRun.status).toBe("shipped");
-    expect(dispatched).toBe(6);
+    expect(dispatched).toBe(7);
 
     expect(stageSequence).toEqual([
+      "classified_new",
       "framed",
       "discovered",
       "planned",
@@ -238,15 +245,15 @@ describe("E2E: synthetic run through all 6 stages", () => {
     ]);
   });
 
-  it("produces all 6 stage artifacts in storage", async () => {
+  it("produces all stage artifacts (conductor + 6 full-flow) in storage", async () => {
     const runId = "run_e2e_002";
     engine.createRun(runId, "Build a SaaS app");
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 7; i++) {
       await engine.dispatchCycle();
     }
 
-    const stages = ["frame", "discover", "plan", "spec", "build", "ship"];
+    const stages = ["conductor", "frame", "discover", "plan", "spec", "build", "ship"];
     for (const stage of stages) {
       const raw = storage.read(`runs/${runId}/${stage}.json`);
       expect(raw).not.toBeNull();
@@ -262,7 +269,7 @@ describe("E2E: synthetic run through all 6 stages", () => {
     const runId = "run_e2e_003";
     engine.createRun(runId, "Build a SaaS app");
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 7; i++) {
       await engine.dispatchCycle();
     }
 
@@ -276,10 +283,11 @@ describe("E2E: synthetic run through all 6 stages", () => {
     const runId = "run_e2e_004";
     engine.createRun(runId, "Build a SaaS app");
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 7; i++) {
       await engine.dispatchCycle();
     }
 
+    // Check the 6 sandbox-based stages (conductor uses a direct LLM call with zero tokens)
     const stages = ["frame", "discover", "plan", "spec", "build", "ship"];
     for (const stage of stages) {
       const raw = storage.read(`runs/${runId}/${stage}.json`);
@@ -295,11 +303,12 @@ describe("E2E: synthetic run through all 6 stages", () => {
     const runId = "run_e2e_005";
     engine.createRun(runId, "Build a SaaS app");
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 7; i++) {
       await engine.dispatchCycle();
     }
 
     // 5 non-build stages (frame/discover/plan/spec/ship) + 8 stories × 2 (worker+validator) = 21
+    // (conductor does NOT use the sandbox — it's a direct LLM call)
     expect(mockSandbox.run).toHaveBeenCalledTimes(21);
     const calls = (mockSandbox.run as ReturnType<typeof vi.fn>).mock.calls;
 
@@ -343,7 +352,8 @@ describe("E2E: synthetic run through all 6 stages", () => {
     engine.setControlDoc({ run_mode: "step" }, "test");
     let dispatched = await engine.dispatchCycle();
     expect(dispatched).toBe(1);
-    expect(engine.getRun(runId)!.status).toBe("framed");
+    // First step: conductor classifies as "new" → classified_new
+    expect(engine.getRun(runId)!.status).toBe("classified_new");
 
     const control = engine.getControlDoc();
     expect(control.run_mode).toBe("paused");
@@ -351,6 +361,7 @@ describe("E2E: synthetic run through all 6 stages", () => {
     engine.setControlDoc({ run_mode: "step" }, "test");
     dispatched = await engine.dispatchCycle();
     expect(dispatched).toBe(1);
-    expect(engine.getRun(runId)!.status).toBe("discovered");
+    // Second step: frame stage → framed
+    expect(engine.getRun(runId)!.status).toBe("framed");
   });
 });

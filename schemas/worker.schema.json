@@ -83,14 +83,24 @@
               ]
             },
             "failure_type": {
-              "type": "string",
-              "enum": [
-                "environment",
-                "implementation"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "environment",
+                    "implementation"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "failure_description": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "branch": {
               "type": "string",

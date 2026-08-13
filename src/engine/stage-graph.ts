@@ -5,7 +5,7 @@ import { parse } from "yaml";
 
 const Transition = z.object({
   from: z.string(),
-  on: z.enum(["pass", "needs_changes", "ceiling", "escalate", "reframe", "rediscover", "replan", "respec", "rebuild"]),
+  on: z.enum(["pass", "needs_changes", "ceiling", "escalate", "reframe", "rediscover", "replan", "respec", "rebuild", "classify_new", "classify_change"]),
   to: z.string(),
   count_toward: z.enum(["revision", "loopback"]).optional(),
 });
@@ -27,6 +27,14 @@ const StageEntry = z.object({
   agent_spec: z.string().min(1).optional(),
   worker_spec: z.string().optional(),
   validator_spec: z.string().optional(),
+  /** When true, the engine handles this stage with a direct LLM call (no
+   * container spawn). Used by the conductor stage for intent classification.
+   * The agent_spec/inner_loop XOR requirement is relaxed for conductor stages. */
+  conductor: z.boolean().default(false),
+  /** When true, the workspace path is resolved to the live project directory
+   * (MISSION_CONTROL_ROOT/PROJECTS/<target>/repo) instead of an ephemeral
+   * copy. Used by the change stage so the agent operates on real files. */
+  live_mount: z.boolean().default(false),
 });
 
 const StageGraph = z.object({
@@ -110,6 +118,8 @@ function validateGraph(graph: StageGraph, baseDir: string): void {
     if (!fs.existsSync(path.resolve(baseDir, stage.artifact_schema))) {
       errors.push(`Stage ${stage.id}: artifact_schema path '${stage.artifact_schema}' does not exist`);
     }
+    // Conductor stages use a direct LLM call — no agent_spec or inner_loop needed.
+    if (stage.conductor) continue;
     const hasAgentSpec = stage.agent_spec !== undefined;
     const hasInnerLoop = stage.inner_loop !== undefined;
     const hasWorkerSpec = stage.worker_spec !== undefined;
@@ -123,7 +133,7 @@ function validateGraph(graph: StageGraph, baseDir: string): void {
       errors.push(`Stage ${stage.id}: cannot have both agent_spec and inner_loop (use one or the other)`);
     }
     if (!hasAgentSpec && !hasInnerLoop) {
-      errors.push(`Stage ${stage.id}: must have either agent_spec or inner_loop`);
+      errors.push(`Stage ${stage.id}: must have either agent_spec or inner_loop (or conductor: true)`);
     }
     if (hasInnerLoop && !hasAgentSpec) {
       if (!hasWorkerSpec || !hasValidatorSpec) {

@@ -8,15 +8,31 @@ retry_ceilings:
   per_story_build: 3
   per_stage_escalation: 5
 stages:
+  - id: conductor
+    anymake_phase: 0
+    anymake_agents: []
+    conductor: true
+    input_states: [intake]
+    output_states: [classified_new, classified_change, conductor_failed]
+    transitions:
+      - { from: intake, on: classify_new, to: classified_new }
+      - { from: intake, on: classify_change, to: classified_change }
+      - { from: intake, on: ceiling, to: conductor_failed }
+    concurrency: 1
+    soft_budget_tokens: 5000
+    timeout_ms: 30000
+    model_tier: 3
+    permission_mode: unattended
+    artifact_schema: schemas/conductor.schema.json
   - id: frame
     anymake_phase: 0
     anymake_agents: [anymake-product-owner-proxy]
-    input_states: [intake]
+    input_states: [classified_new]
     output_states: [framed, framing_failed]
     transitions:
-      - { from: intake, on: pass, to: framed }
-      - { from: intake, on: needs_changes, to: intake, count_toward: revision }
-      - { from: intake, on: ceiling, to: framing_failed }
+      - { from: classified_new, on: pass, to: framed }
+      - { from: classified_new, on: needs_changes, to: classified_new, count_toward: revision }
+      - { from: classified_new, on: ceiling, to: framing_failed }
     concurrency: 1
     soft_budget_tokens: 50000
     timeout_ms: 600000
@@ -32,7 +48,7 @@ stages:
     transitions:
       - { from: framed, on: pass, to: discovered }
       - { from: framed, on: needs_changes, to: framed, count_toward: revision }
-      - { from: framed, on: reframe, to: intake, count_toward: loopback }
+      - { from: framed, on: reframe, to: classified_new, count_toward: loopback }
       - { from: framed, on: ceiling, to: discovery_failed }
     concurrency: 1
     soft_budget_tokens: 60000
@@ -112,3 +128,21 @@ stages:
     permission_mode: unattended_with_approval_on_deploy
     artifact_schema: schemas/ship.schema.json
     agent_spec: agent-specs/ship.yaml
+  - id: change
+    anymake_phase: 4
+    anymake_agents: [anymake-solution-architect, anymake-plan-reviewer, anymake-worker, anymake-validator]
+    live_mount: true
+    input_states: [classified_change]
+    output_states: [shipped, change_failed, escalated]
+    transitions:
+      - { from: classified_change, on: pass, to: shipped }
+      - { from: classified_change, on: needs_changes, to: classified_change, count_toward: revision }
+      - { from: classified_change, on: ceiling, to: change_failed }
+      - { from: classified_change, on: escalate, to: escalated }
+    concurrency: 1
+    soft_budget_tokens: 500000
+    timeout_ms: 900000
+    model_tier: 1
+    permission_mode: unattended
+    artifact_schema: schemas/change.schema.json
+    agent_spec: agent-specs/change.yaml

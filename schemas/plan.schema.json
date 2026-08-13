@@ -113,10 +113,16 @@
               "minItems": 1
             },
             "ux_design_md": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "prototype_path": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [

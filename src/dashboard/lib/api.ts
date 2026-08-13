@@ -67,6 +67,8 @@ export function usePoll<T>(url: string, intervalMs = POLL_MS): { data: T | null;
 
 const STATUS_TO_RUN_STATUS: Record<string, RunStatus> = {
   intake: "running",
+  classified_new: "running",
+  classified_change: "running",
   framed: "running",
   discovered: "running",
   planned: "running",
@@ -78,16 +80,21 @@ const STATUS_TO_RUN_STATUS: Record<string, RunStatus> = {
   paused_step: "paused_step",
   paused_cost_cap: "paused_cost_cap",
   escalated: "escalated",
+  conductor_failed: "failed",
   framing_failed: "failed",
   discovery_failed: "failed",
   plan_failed: "failed",
   spec_failed: "failed",
   build_failed: "failed",
   ship_failed: "failed",
+  change_failed: "failed",
 };
 
 const STATE_TO_STAGE: Record<string, StageName> = {
-  intake: "frame",
+  intake: "conductor",
+  classified_new: "frame",
+  classified_change: "change",
+  conductor_failed: "conductor",
   framing_failed: "frame",
   framed: "discover",
   discovered: "plan",
@@ -101,10 +108,11 @@ const STATE_TO_STAGE: Record<string, StageName> = {
   escalated: "build",
   shipped: "ship",
   ship_failed: "ship",
+  change_failed: "change",
 };
 
 function deriveStages(status: string): { stages: Stage[]; current: StageName } {
-  const current = STATE_TO_STAGE[status] ?? "frame";
+  const current = STATE_TO_STAGE[status] ?? "conductor";
   const currentIdx = STAGE_ORDER.indexOf(current);
   const isFailed = status.endsWith("_failed");
   const isPaused = status === "paused_step" || status === "paused_cost_cap";

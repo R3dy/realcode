@@ -9,23 +9,27 @@ import { SandboxRunner } from "../sandbox/runner.js";
 import { loadAgentSpec, type AgentSpec } from "./spec-loader.js";
 import { eventFromJsonLine, appendLiveEvent } from "../engine/live-state.js";
 import {
+  ConductorOutput,
   FrameOutput,
   DiscoverOutput,
   PlanOutput,
   SpecOutput,
   BuildOutput,
   ShipOutput,
+  ChangeOutput,
   WorkerOutput,
   ValidatorOutput,
 } from "../schemas/index.js";
 
 const STAGE_SCHEMAS: Record<string, ZodTypeAny> = {
+  conductor: ConductorOutput,
   frame: FrameOutput,
   discover: DiscoverOutput,
   plan: PlanOutput,
   spec: SpecOutput,
   build: BuildOutput,
   ship: ShipOutput,
+  change: ChangeOutput,
   build_worker: WorkerOutput,
   build_validator: ValidatorOutput,
 };

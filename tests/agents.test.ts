@@ -118,8 +118,8 @@ describe("AgentStageRunner", () => {
     it("uses the tier env var for the stage's model tier", () => {
       const sandbox = makeMockSandbox("");
       const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
-      const stage = graph.stages[0]; // frame, tier 1
-      const spec = loadAgentSpec(path.resolve(REPO_ROOT, stage.agent_spec));
+      const stage = graph.stages[1]; // frame, tier 1
+      const spec = loadAgentSpec(path.resolve(REPO_ROOT, stage.agent_spec!));
 
       process.env.ANYMAKE_MODEL_TIER1 = "anthropic/claude-sonnet-4";
       expect(runner.resolveModel(stage, spec)).toBe("anthropic/claude-sonnet-4");
@@ -129,7 +129,7 @@ describe("AgentStageRunner", () => {
     it("falls back to TIER1 env var then default", () => {
       const sandbox = makeMockSandbox("");
       const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
-      const stage = graph.stages[4]; // build, tier 3
+      const stage = graph.stages[5]; // build, tier 3
       // At A4.4 the build stage is an inner-loop stage: no agent_spec, use worker_spec
       const spec = loadAgentSpec(path.resolve(REPO_ROOT, stage.worker_spec!));
 
@@ -145,7 +145,7 @@ describe("AgentStageRunner", () => {
     it("uses tier 3 env for build stage", () => {
       const sandbox = makeMockSandbox("");
       const runner = new AgentStageRunner(sandbox as never, storage, graph, { repoRoot: REPO_ROOT });
-      const stage = graph.stages[4]; // build, tier 3
+      const stage = graph.stages[5]; // build, tier 3
       // At A4.4 the build stage is an inner-loop stage: no agent_spec, use worker_spec
       const spec = loadAgentSpec(path.resolve(REPO_ROOT, stage.worker_spec!));
 
@@ -310,7 +310,7 @@ describe("AgentStageRunner", () => {
         created_at: Date.now(),
         updated_at: Date.now(),
       };
-      const stage = graph.stages[0]; // frame
+      const stage = graph.stages[1]; // frame
 
       const result = await runner.run(item, stage, "/tmp/ws");
 
@@ -345,7 +345,7 @@ describe("AgentStageRunner", () => {
         created_at: Date.now(),
         updated_at: Date.now(),
       };
-      const stage = graph.stages[0];
+      const stage = graph.stages[1]; // frame
 
       const result = await runner.run(item, stage, "/tmp/ws");
       expect(result.output_status).toBe("escalate");
@@ -368,7 +368,7 @@ describe("AgentStageRunner", () => {
         created_at: Date.now(),
         updated_at: Date.now(),
       };
-      const stage = graph.stages[0];
+      const stage = graph.stages[1]; // frame
 
       const result = await runner.run(item, stage, "/tmp/ws");
       expect(result.output_status).toBe("escalate");
@@ -396,7 +396,7 @@ describe("AgentStageRunner", () => {
         created_at: Date.now(),
         updated_at: Date.now(),
       };
-      const stage = graph.stages[0];
+      const stage = graph.stages[1]; // frame
 
       const result = await runner.run(item, stage, "/tmp/ws");
       expect(result.output_status).toBe("escalate");
@@ -447,7 +447,7 @@ describe("AgentStageRunner", () => {
         created_at: Date.now(),
         updated_at: Date.now(),
       };
-      const stage = graph.stages[2]; // plan
+      const stage = graph.stages[3]; // plan
 
       const result = await runner.run(item, stage, "/tmp/ws");
 

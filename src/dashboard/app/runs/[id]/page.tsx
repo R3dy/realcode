@@ -30,12 +30,14 @@ import { STAGE_ORDER, type StageName, type StageStatus } from "@/lib/data";
 import type { DetailStageStatus, RunDetailResponse, LiveState } from "@/lib/engine";
 
 const STAGE_DISPLAY: Record<StageName, string> = {
+  conductor: "Conductor",
   frame: "Frame",
   discover: "Discover",
   plan: "Plan",
   spec: "Spec",
   build: "Build",
   ship: "Ship",
+  change: "Change",
 };
 
 const DETAIL_STATUS_TONE: Record<DetailStageStatus, "pass" | "run" | "fail" | "pause" | "neutral"> = {

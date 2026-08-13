@@ -6,7 +6,45 @@
 >
 > **Next action, in order:**
 >
-> **Dashboard crash + pipeline reliability fixes SHIPPED (2026-08-13, session 24):**
+> **Issue #16 SHIPPED (2026-08-13, session 25) — Conductor + dual-flow architecture:**
+> - Royce identified the root disease: realcode forced every request through the
+>   same 6-stage greenfield pipeline (frame→discover→plan→spec→build→ship). A
+>   one-line change took 20 minutes. The workspace-copy model caused empty-
+>   workspace crashes. And despite PROJECT.md saying realcode "wraps anymake,"
+>   stage specs inlined methodology as frozen prompts.
+> - **Conductor (stage 0):** A direct LLM call (NOT a container spawn) in the
+>   engine process that classifies requests as new_project vs change. Uses
+>   hybrid approach: deterministic project-name matching first (instant, $0),
+>   LLM fallback for ambiguous cases. Determines flow_type: full | agile.
+> - **Dual flows:** full (new_project) = existing 6-stage pipeline. agile
+>   (change) = single "change" stage with one container spawn.
+> - **Live-mount:** For the agile flow, the REAL project directory
+>   (MISSION_CONTROL_ROOT/PROJECTS/<target>/repo) is mounted read-write at
+>   /workspace. No copy, no seeding, no empty-workspace crashes. The sandbox
+>   runner translates /mission-control → host mission-control root for Docker -v.
+> - **Change agent spec:** Strict 8-tool-call budget. "Find what you need, edit
+>   it, test it, commit it. Done." Model tier 1, 15-min timeout.
+> - **Stage graph:** 8 stages now (conductor + frame + discover + plan + spec +
+>   build + ship + change). The conductor branches: intake → classified_new
+>   (full flow) or classified_change (agile flow → change → shipped).
+> - 271 tests pass (256 original + 15 new for conductor + change flow).
+> - E2E VERIFIED: "Add a footer to realvol" → conductor classified as change
+>   (deterministic match, $0) → change agent found footer already exists → ran
+>   tests → shipped. Total: ~2 min, $0.023. (vs old: 20+ min, $0.60+)
+>
+> **Changes are UNCOMMITTED.** Need Royce to approve commit + push.
+>
+> **What's next:**
+> 1. Royce to approve commit + push of all session 25 changes.
+> 2. Test with a change that actually requires editing (e.g., "add a health
+>    check endpoint to realmemory") — the footer test found the feature already
+>    present, so no files were modified.
+> 3. Fix the anymake path references in frame/discover/spec agent specs (they
+>    reference relative paths like PHASE_GUIDES/phase-0.md that don't resolve
+>    from /workspace — should reference the anymake plugin path inside the
+>    sandbox image).
+> 4. Consider allowing the change agent to use the Task/Skill tools for
+>    anymake-agile delegation on more complex changes.
 > - Royce reported: realcode run failed AND dashboard crashed with
 >   "Application error: a client-side exception has occurred" when viewing the
 >   failed run. This was unacceptable.
@@ -208,10 +246,10 @@
 
 ---
 
-**Last updated:** 2026-08-13 (session 24 — dashboard crash fix + pipeline reliability)
-**Updated by:** Claude (dashboard crash + build worker visibility + jsonrepair)
-**Current phase:** Phase 5 -- Launch (dashboard crash fixed, pipeline reliability improved)
-**Current step:** Royce to approve commit + push. Then: spec prompt engineering to reduce story count.
+**Last updated:** 2026-08-13 (session 25 — conductor + dual-flow architecture)
+**Updated by:** Claude (issue #16: conductor, live-mount, change flow)
+**Current phase:** Phase 5 -- Launch (conductor + dual-flow architecture shipped)
+**Current step:** Royce to approve commit + push. Then: test with a real change that modifies files.
 **project_type:** agentic-harness
 **autonomous_mode:** true
 

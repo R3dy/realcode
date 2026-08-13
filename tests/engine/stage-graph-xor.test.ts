@@ -95,7 +95,7 @@ describe("Stage-graph XOR rule", () => {
     // fs.existsSync enforcement passes because worker.yaml + validator.yaml
     // now exist.
     const graph = loadStageGraph(REAL_GRAPH);
-    expect(graph.stages.length).toBe(6);
+    expect(graph.stages.length).toBe(8);
     const buildStage = graph.stages.find((s) => s.id === "build")!;
     expect(buildStage.agent_spec).toBeUndefined();
     expect(buildStage.inner_loop).toBeDefined();

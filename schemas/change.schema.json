@@ -1,7 +1,7 @@
 {
-  "$ref": "#/definitions/ShipOutput",
+  "$ref": "#/definitions/ChangeOutput",
   "definitions": {
-    "ShipOutput": {
+    "ChangeOutput": {
       "type": "object",
       "properties": {
         "schema_version": {
@@ -58,13 +58,13 @@
         },
         "stage": {
           "type": "string",
-          "const": "ship"
+          "const": "change"
         },
         "status": {
           "type": "string",
           "enum": [
             "shipped",
-            "ship_failed"
+            "change_failed"
           ]
         },
         "revisions_used": {
@@ -76,40 +76,55 @@
         "artifact": {
           "type": "object",
           "properties": {
-            "live_url": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uri"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "repo_url": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uri"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "launch_checklist_md": {
+            "changes_summary": {
               "type": "string",
               "minLength": 1
             },
-            "metrics_dashboard_md": {
+            "files_modified": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "files_created": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "tests_run": {
+              "type": "boolean",
+              "default": false
+            },
+            "tests_passed": {
+              "type": "boolean",
+              "default": false
+            },
+            "test_output": {
               "type": "string",
-              "minLength": 1
+              "default": ""
+            },
+            "commit_sha": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "commit_message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_project": {
+              "type": "string"
             }
           },
           "required": [
-            "launch_checklist_md",
-            "metrics_dashboard_md"
+            "changes_summary",
+            "target_project"
           ],
           "additionalProperties": false
         }
