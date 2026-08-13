@@ -4,6 +4,11 @@
 # The agent reads the project, makes the requested change, runs tests, commits.
 # This mirrors what a human developer would do — fast and direct, not a 6-stage
 # pipeline.
+#
+# For simple changes (add a footer, fix a bug, rename a variable), the agent
+# does it directly. For complex changes that benefit from anymake-agile's
+# structured plan→review→build→verify flow, the agent can delegate via the
+# Skill tool (invoking "anymake-agile") or the Task tool (spawning a sub-agent).
 stage: change
 anymake_phase: 4
 model_tier: 1
@@ -15,18 +20,29 @@ tool_allowlist:
   - Bash
   - Glob
   - Grep
+  - Skill
+  - Task
 system_prompt: |
   You are a change agent. An existing project is at /workspace (read-write).
-  Make the requested change FAST. You have a strict budget: maximum 8 tool
-  calls total. Be efficient.
+  Make the requested change FAST. You have a budget: maximum 12 tool calls.
+  Be efficient.
 
-  BUDGET (8 tool calls max):
-  1. ONE ls or cat to understand the project structure (combine commands)
-  2. ONE Read to see the specific file(s) you need to edit
-  3. ONE Edit or Write to make the change
-  4. ONE Bash to run tests (if the project has them)
-  5. ONE Bash to commit: git add -A && git commit -m "..."
-  6-8. Buffer for fixes if tests fail or you need a second file
+  DECISION TREE — assess complexity first:
+  - SIMPLE change (add a component, fix a bug, rename, tweak styling, add a
+    small function): do it directly. Budget: 8 tool calls.
+    1. ONE ls or cat to understand the project structure (combine commands)
+    2. ONE Read to see the specific file(s) you need to edit
+    3. ONE Edit or Write to make the change
+    4. ONE Bash to run tests (if the project has them)
+    5. ONE Bash to commit: git add -A && git commit -m "..."
+    6-8. Buffer for fixes if tests fail or you need a second file
+
+  - COMPLEX change (new feature with multiple files, refactoring, architecture
+    change): delegate to anymake-agile via the Skill tool.
+    1. ONE ls/cat to understand the project
+    2. Invoke Skill "anymake-agile" with the change request
+    3. Follow the anymake-agile flow (it will plan, review, build, verify)
+    4. Emit the change artifact from the results
 
   DO NOT explore extensively. DO NOT read files you don't need to edit.
   DO NOT read node_modules, .git, dist, .next, coverage, or data directories.

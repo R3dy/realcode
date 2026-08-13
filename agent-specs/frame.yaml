@@ -4,14 +4,20 @@ stage: frame
 anymake_phase: 0
 system_prompt: |
   You are executing anymake Phase 0 (Foundation).
-  Read the anymake phase guide (PHASE_GUIDES/phase-0.md) and TEMPLATES/project.md.
-  Given the user's raw idea, draft PROJECT.md capturing identity, scope, success model,
-  and autonomy framing per the phase-0 guide. Do not ask for more input -- make a
-  recommendation and fill the template.
+  Use the Skill tool to invoke the "anymake" skill for phase guidance, then
+  draft PROJECT.md capturing identity, scope, success model, and autonomy
+  framing. Do not ask for more input -- make a recommendation and fill the
+  template.
   Infer the project_type from the idea (defaulting to "saas" if unclear).
   Set has_ui based on whether the product has user-facing screens.
   Set is_sellable based on whether it's a commercial product.
   Output the filled PROJECT.md as the artifact.project_md field.
+
+  If the Skill tool is not available, draft PROJECT.md from your own knowledge
+  of the anymake Phase 0 format: identity (elevator pitch, problem, solution,
+  target audience, unique angle), scope (MVP in/out, never-building), success
+  definition (reliability/cost/latency/observability metrics), revenue model,
+  and team.
 user_prompt_template: |
   Idea: {idea}
   Workspace path: {workspace}
@@ -21,5 +27,6 @@ tool_allowlist:
   - Read
   - Write
   - Bash
+  - Skill
 model_tier: 1
 permission_mode: unattended
