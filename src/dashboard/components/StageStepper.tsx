@@ -13,13 +13,18 @@ export function StageStepper({
   compact?: boolean;
 }) {
   return (
-    <div className={cn("flex items-center", compact ? "gap-1" : "gap-1.5")}>
+    <div
+      className={cn(
+        "flex items-center overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        compact ? "gap-1" : "gap-1.5",
+      )}
+    >
       {STAGE_ORDER.map((name, i) => {
         const s = stages.find((x) => x.name === name);
         const status = s?.status ?? "pending";
         const isCurrent = name === current;
         return (
-          <div key={name} className="flex items-center">
+          <div key={name} className="flex shrink-0 items-center">
             <div className="flex items-center gap-1.5">
               <span
                 className={cn(

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
@@ -10,6 +10,13 @@ const bricolage = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-br
 export const metadata: Metadata = {
   title: "realcode — control plane",
   description: "Autonomous idea-to-shipped harness. Watch every run, trace every agent, bound every dollar.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0a0b12",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

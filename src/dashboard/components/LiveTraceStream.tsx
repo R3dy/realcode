@@ -121,7 +121,7 @@ export function LiveTraceStream({ runId, runActive }: { runId: string; runActive
 
   return (
     <Card className="flex max-h-[520px] flex-col p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h3 className="font-display text-sm font-semibold text-ink-100">Live Trace</h3>
           <StatusDot tone={connected ? "run" : done ? "pass" : "neutral"} pulse={connected} />
@@ -129,7 +129,7 @@ export function LiveTraceStream({ runId, runActive }: { runId: string; runActive
             {connected ? "live" : done ? "stream closed" : runActive ? "connecting…" : "tracing offline"}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <FilterSelect
             value={filterStage}
             onChange={setFilterStage}

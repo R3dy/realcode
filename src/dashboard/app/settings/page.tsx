@@ -16,12 +16,12 @@ export default function SettingsPage() {
       </div>
       <Card className="divide-y divide-ink-800">
         {rows.map((r) => (
-          <div key={r.label} className="flex items-center justify-between gap-3 px-4 py-3.5">
+          <div key={r.label} className="flex flex-col items-start gap-1 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div className="flex items-center gap-2.5">
               <r.icon className="h-4 w-4 text-ink-600" />
               <span className="text-sm text-ink-300">{r.label}</span>
             </div>
-            <code className="font-mono text-xs text-brand-300">{r.value}</code>
+            <code className="break-all font-mono text-xs text-brand-300 sm:text-right">{r.value}</code>
           </div>
         ))}
       </Card>

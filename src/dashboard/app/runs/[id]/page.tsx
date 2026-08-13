@@ -183,7 +183,7 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
             <h1 className="font-display text-xl font-bold tracking-tight text-ink-100">
               {run.idea}
             </h1>
-            <div className="flex items-center gap-4 text-xs text-ink-500">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-500">
               <span className="inline-flex items-center gap-1">
                 <Coins className="h-3.5 w-3.5" />
                 <span className={cn(overCap && "text-status-fail font-medium")}>
@@ -212,7 +212,7 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
             className="shrink-0"
           >
             <Trash2 className="h-4 w-4" />
-            Delete run
+            <span className="hidden sm:inline">Delete run</span>
           </Button>
         </div>
       </Card>

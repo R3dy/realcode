@@ -18,13 +18,13 @@ export function TraceTimeline({ run }: { run: Run }) {
             transition={{ duration: 0.2, delay: si * 0.05, ease: "easeOut" }}
             className="overflow-hidden rounded-lg border border-ink-700/60 bg-ink-900"
           >
-            <div className="flex items-center justify-between gap-3 border-l-2 px-4 py-3" style={{ borderColor: borderColor(s.status) }}>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-l-2 px-4 py-3" style={{ borderColor: borderColor(s.status) }}>
               <div className="flex items-center gap-2.5">
                 <StatusDot tone={tone} pulse={s.status === "running"} />
                 <span className="font-mono text-sm font-semibold text-ink-100">{s.name}</span>
                 <span className="text-xs text-ink-600">stage</span>
               </div>
-              <div className="flex items-center gap-4 text-xs text-ink-500">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-500">
                 <span className="inline-flex items-center gap-1"><Coins className="h-3.5 w-3.5" />{fmtCost(s.costUsd)}</span>
                 <span className="inline-flex items-center gap-1"><Cpu className="h-3.5 w-3.5" />{fmtTokens(s.tokens)}</span>
                 {s.status !== "running" && s.latencyMs > 0 && (

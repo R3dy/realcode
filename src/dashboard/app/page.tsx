@@ -75,13 +75,13 @@ export default function BoardPage() {
             </button>
           ))}
         </div>
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-600" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search idea or run id..."
-            className="h-8 w-56 rounded-lg border border-ink-700 bg-ink-850 pl-8 pr-3 text-xs text-ink-100 placeholder:text-ink-600 focus:border-brand-500 focus:outline-none"
+            className="h-8 w-full rounded-lg border border-ink-700 bg-ink-850 pl-8 pr-3 text-xs text-ink-100 placeholder:text-ink-600 focus:border-brand-500 focus:outline-none sm:w-56"
           />
         </div>
       </div>
