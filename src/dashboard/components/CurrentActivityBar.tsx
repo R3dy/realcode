@@ -44,9 +44,12 @@ export function CurrentActivityBar({ runId, liveState }: CABProps) {
   // Poll the detail endpoint every 2s so the activity line re-evaluates elapsed
   // time and picks up live_state stage transitions without a new route (INV-5).
   const { data } = usePoll<RunDetailResponse>(`/api/runs/${runId}`, 2000);
-  const live =
-    (data as RunDetailResponse & { live_state?: LiveState }).live_state ??
-    liveState;
+  // usePoll initializes `data` to null until the first fetch resolves — guard
+  // with optional chaining so the first render doesn't throw `null.live_state`.
+  // Cast was a TypeScript-only assertion (erased at runtime) and never actually
+  // protected us. The parent page only mounts this component when ITS fetch
+  // already returned a live_state, but THIS component's own usePoll starts null.
+  const live = data?.live_state ?? liveState;
 
   if (!live) return null;
 

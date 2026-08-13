@@ -70,7 +70,7 @@ stages:
       - { from: planned, on: ceiling, to: spec_failed }
     concurrency: 1
     soft_budget_tokens: 120000
-    timeout_ms: 300000
+    timeout_ms: 480000
     model_tier: 2
     permission_mode: unattended
     artifact_schema: schemas/spec.schema.json

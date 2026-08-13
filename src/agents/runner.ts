@@ -1,6 +1,7 @@
 import * as path from "path";
 import type { ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { jsonrepair } from "jsonrepair";
 import type { StageRunner } from "../engine/dispatcher.js";
 import type { StageEntry, StageGraph } from "../engine/stage-graph.js";
 import type { WorkItem, Storage } from "../backend/types.js";
@@ -64,8 +65,18 @@ export class AgentStageRunner implements StageRunner {
       schemaKey?: string;
       extraContext?: Record<string, unknown>;
       attempt?: number;
+      /** Per-dispatch timeout override (ms). Falls back to stage.timeout_ms. */
+      timeoutMs?: number;
     },
-  ) {
+  ): Promise<{
+    output_status: string;
+    artifact: Record<string, unknown>;
+    token_usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; estimated_cost_usd: number };
+    trace_id: string;
+    jsonEvents?: unknown[];
+    /** Docker container ID (empty string when no cidfile was used). */
+    containerId?: string;
+  }> {
     if (!stage.agent_spec && !opts?.specOverride) {
       throw new Error(
         `Stage '${stage.id}' has no agent_spec and no specOverride provided — cannot dispatch via AgentStageRunner. ` +
@@ -84,33 +95,38 @@ export class AgentStageRunner implements StageRunner {
     const dispatchMessage = this.buildDispatchMessage(spec, userPrompt, schemaJson, stage, role);
     const traceId = (item.payload.trace_id as string) || item.run_id;
 
-    // A11.1 non-build live capture. The SAME AgentStageRunner.run() is used by
-    // BuildLoopRunner for per-story Worker/Validator sub-dispatches (it passes
-    // specOverride — build sub-dispatch). Those must stay byte-identical to
-    // today: no identity fields, no liveCapture, no onJsonLine (1-C1). Only a
-    // DIRECT non-build stage dispatch (no opts / no specOverride) enables live
-    // capture.
+    // Live capture is now enabled for ALL dispatches, including build
+    // worker/validator sub-dispatches. The original A11.1 design left build
+    // sub-dispatches without liveCapture to keep spawn args "byte-identical"
+    // — but that made worker timeouts completely invisible (no container logs,
+    // no trace events, no container_id in build-state). Royce hit exactly this
+    // blind spot: a worker timed out on a trivial story and there was zero
+    // evidence of what it was doing. Visibility wins over byte-identity.
     const isBuildSubDispatch = opts?.specOverride !== undefined;
-    const liveOptions = isBuildSubDispatch
-      ? {}
-      : {
-          runId: item.run_id,
-          stageId: stage.id,
-          containerRole: stage.id,
-          containerAttempt: opts?.attempt ?? 0,
-          storyId: "stage" as const,
-          liveCapture: true as const,
-          onJsonLine: (ev: unknown): void => {
-            try {
-              const traceEvent = eventFromJsonLine(ev, stage.id);
-              if (traceEvent) {
-                appendLiveEvent(item.run_id, traceEvent);
-              }
-            } catch (err) {
-              console.warn(`[agents] onJsonLine handler failed: ${err instanceof Error ? err.message : String(err)}`);
-            }
-          },
-        };
+    const containerRole = isBuildSubDispatch
+      ? (opts?.extraContext?.role as string | undefined) ?? `build_${stage.id}`
+      : stage.id;
+    const storyId = isBuildSubDispatch
+      ? (opts?.extraContext?.story_id as string | undefined) ?? "story"
+      : "stage";
+    const liveOptions = {
+      runId: item.run_id,
+      stageId: stage.id,
+      containerRole,
+      containerAttempt: opts?.attempt ?? 0,
+      storyId,
+      liveCapture: true as const,
+      onJsonLine: (ev: unknown): void => {
+        try {
+          const traceEvent = eventFromJsonLine(ev, stage.id);
+          if (traceEvent) {
+            appendLiveEvent(item.run_id, traceEvent);
+          }
+        } catch (err) {
+          console.warn(`[agents] onJsonLine handler failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      },
+    };
 
     const result = await this.sandbox.run({
       workspacePath,
@@ -118,7 +134,7 @@ export class AgentStageRunner implements StageRunner {
       dispatchMessage,
       traceparent: traceId,
       localMode: this.options.localMode ?? true,
-      timeoutMs: stage.timeout_ms ?? this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      timeoutMs: opts?.timeoutMs ?? stage.timeout_ms ?? this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       env: this.collectModelEnv(),
       ...liveOptions,
     });
@@ -135,6 +151,7 @@ export class AgentStageRunner implements StageRunner {
         token_usage: tokenUsage,
         trace_id: traceId,
         jsonEvents: result.jsonEvents,
+        containerId: result.containerId,
       };
     }
 
@@ -149,6 +166,7 @@ export class AgentStageRunner implements StageRunner {
         token_usage: tokenUsage,
         trace_id: traceId,
         jsonEvents: result.jsonEvents,
+        containerId: result.containerId,
       };
     }
 
@@ -169,6 +187,7 @@ export class AgentStageRunner implements StageRunner {
         token_usage: tokenUsage,
         trace_id: traceId,
         jsonEvents: result.jsonEvents,
+        containerId: result.containerId,
       };
     }
 
@@ -184,6 +203,7 @@ export class AgentStageRunner implements StageRunner {
         token_usage: tokenUsage,
         trace_id: traceId,
         jsonEvents: result.jsonEvents,
+        containerId: result.containerId,
       };
     }
 
@@ -193,6 +213,7 @@ export class AgentStageRunner implements StageRunner {
       token_usage: tokenUsage,
       trace_id: validated.data.trace_id as string,
       jsonEvents: result.jsonEvents,
+      containerId: result.containerId,
     };
   }
 
@@ -343,15 +364,86 @@ export class AgentStageRunner implements StageRunner {
   }
 
   private parseJsonObject(s: string): Record<string, unknown> | null {
+    // 1. Direct parse.
     try {
       const parsed = JSON.parse(s);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         return parsed as Record<string, unknown>;
       }
     } catch {
-      // not valid JSON
+      // not valid JSON — try fallbacks
+    }
+    // 2. Control-char sanitizer (LLMs emit literal newlines in string values).
+    try {
+      const sanitized = this.sanitizeJsonControlChars(s);
+      if (sanitized !== s) {
+        const parsed = JSON.parse(sanitized);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      }
+    } catch {
+      // still not valid JSON
+    }
+    // 3. jsonrepair — handles unescaped quotes, trailing commas, and other
+    //    common LLM JSON mistakes that the sanitizer can't fix.
+    try {
+      const repaired = jsonrepair(s);
+      const parsed = JSON.parse(repaired);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // jsonrepair also failed — give up
     }
     return null;
+  }
+
+  /**
+   * Escape literal control characters inside JSON string values. Walks the
+   * string tracking whether we're inside a quoted string value; when inside,
+   * replaces literal \n \r \t and other control chars with their escaped
+   * equivalents. This handles the common LLM mistake of emitting unescaped
+   * newlines in multi-line string fields (e.g. markdown content).
+   */
+  private sanitizeJsonControlChars(s: string): string {
+    let result = "";
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (escaped) {
+        result += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        result += ch;
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        result += ch;
+        continue;
+      }
+      if (inString) {
+        const code = ch.charCodeAt(0);
+        if (code < 0x20) {
+          switch (ch) {
+            case "\n": result += "\\n"; break;
+            case "\r": result += "\\r"; break;
+            case "\t": result += "\\t"; break;
+            default: result += "\\u" + code.toString(16).padStart(4, "0");
+          }
+        } else {
+          result += ch;
+        }
+      } else {
+        result += ch;
+      }
+    }
+    return result;
   }
 
   getStageSchemaJson(stageId: string): string {

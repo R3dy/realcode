@@ -116,13 +116,13 @@ describe("sandbox/runner live capture (A11.1)", () => {
     expect(state.container!.name).toBe("realcode-run_live-frame-0");
     expect(state.container!.role).toBe("frame");
     // log_path + log file under the data dir (resolved from REALCODE_DATA_DIR).
-    expect(state.container!.log_path).toBe("runs/run_live/containers/stage-frame-0.log");
-    expect(fs.existsSync(path.join(tmpDir, "runs", "run_live", "containers", "stage-frame-0.log"))).toBe(true);
+    expect(state.container!.log_path).toBe("runs/run_live/containers/stage-frame-stage-0.log");
+    expect(fs.existsSync(path.join(tmpDir, "runs", "run_live", "containers", "stage-frame-stage-0.log"))).toBe(true);
     // container_id populated non-null (by the mid-flight poll).
     expect(state.container!.container_id).toBe("fake_live_cid_9876543210");
     expect(state.container!.status).toBe("running");
     // The tee log file has content (the fake's stdout).
-    const logContent = fs.readFileSync(path.join(tmpDir, "runs", "run_live", "containers", "stage-frame-0.log"), "utf8");
+    const logContent = fs.readFileSync(path.join(tmpDir, "runs", "run_live", "containers", "stage-frame-stage-0.log"), "utf8");
     expect(logContent).toContain("c1");
     fs.rmSync(ws, { recursive: true, force: true });
   });
@@ -157,7 +157,7 @@ describe("sandbox/runner live capture (A11.1)", () => {
     expect((parsed[0] as { part: { text: string } }).part.text).toBe("line-one");
     expect((parsed[2] as { part: { text: string } }).part.text).toBe("line-three");
     // The tee log file captured all 3 lines.
-    const logContent = fs.readFileSync(path.join(tmpDir, "runs", "run_tee", "containers", "stage-discover-0.log"), "utf8");
+    const logContent = fs.readFileSync(path.join(tmpDir, "runs", "run_tee", "containers", "stage-discover-stage-0.log"), "utf8");
     for (const l of lines) expect(logContent).toContain(l.slice(0, 30));
     // SandboxResult contract is unchanged: full stdout + jsonEvents still parsed.
     expect(result.stdout).toContain("line-one");

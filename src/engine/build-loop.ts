@@ -4,6 +4,15 @@ import type { StageGraph, StageEntry } from "./stage-graph.js";
 import type { StageRunner } from "./dispatcher.js";
 import type { Span } from "@opentelemetry/api";
 import { trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { writeLiveState } from "./live-state.js";
+
+// Per-worker/validator timeout caps. The stage timeout_ms (20min for build)
+// is the WALL-CLOCK bound for the entire loop; individual workers should not
+// each get 20 minutes — a stuck worker burns the whole budget on one story.
+// 10 min per worker (allows npm install + code + test + commit),
+// 5 min per validator.
+const WORKER_TIMEOUT_MS = 600_000;
+const VALIDATOR_TIMEOUT_MS = 300_000;
 
 export interface BuildLoopRunnerOptions {
   repoRoot: string;
@@ -245,9 +254,23 @@ export class BuildLoopRunner implements StageRunner {
       story.started_at = Date.now();
       this.writeBuildState(item.run_id, buildState);
 
+      // Live-state: show which story the worker is building (visibility fix —
+      // previously the build stage had NO live-state writes, leaving the
+      // dashboard blind during the longest-running stage).
+      try {
+        writeLiveState(item.run_id, {
+          stage: "build",
+          status: "running",
+          container: null,
+          failure_message: undefined,
+        });
+      } catch { /* non-fatal */ }
+
       const workerResult = await this.runner.run(item, stage, workspacePath, {
         specOverride: stage.worker_spec,
         schemaKey: "build_worker",
+        timeoutMs: WORKER_TIMEOUT_MS,
+        attempt: story.retry_count,
         extraContext: {
           story_id: story.story_id,
           story_title: story.title,
@@ -257,12 +280,22 @@ export class BuildLoopRunner implements StageRunner {
       });
 
       story.worker_output = workerResult.artifact;
+      story.worker_container_id = workerResult.containerId ?? null;
       story.worker_cost_usd = workerResult.token_usage.estimated_cost_usd;
       story.worker_tokens = workerResult.token_usage.total_tokens;
       loopCostUsd += workerResult.token_usage.estimated_cost_usd;
       loopPromptTokens += workerResult.token_usage.prompt_tokens;
       loopCompletionTokens += workerResult.token_usage.completion_tokens;
       loopTotalTokens += workerResult.token_usage.total_tokens;
+      // Track the container for dashboard visibility
+      if (workerResult.containerId) {
+        buildState.containers.push({
+          container_id: workerResult.containerId,
+          role: "build_worker",
+          story_id: story.story_id,
+          log_path: `runs/${item.run_id}/containers/stage-build-${story.story_id}-${story.retry_count}.log`,
+        });
+      }
       this.emitTurnSpans(item.run_id, story.story_id, "build_worker", workerResult.jsonEvents ?? [], stageSpan);
       this.writeBuildState(item.run_id, buildState);
 
@@ -347,9 +380,20 @@ export class BuildLoopRunner implements StageRunner {
       story.status = "validating";
       this.writeBuildState(item.run_id, buildState);
 
+      // Live-state: show validating
+      try {
+        writeLiveState(item.run_id, {
+          stage: "build",
+          status: "running",
+          container: null,
+        });
+      } catch { /* non-fatal */ }
+
       const validatorResult = await this.runner.run(item, stage, workspacePath, {
         specOverride: stage.validator_spec,
         schemaKey: "build_validator",
+        timeoutMs: VALIDATOR_TIMEOUT_MS,
+        attempt: story.retry_count,
         extraContext: {
           story_id: story.story_id,
           story_title: story.title,
@@ -360,12 +404,21 @@ export class BuildLoopRunner implements StageRunner {
       });
 
       story.validator_output = validatorResult.artifact;
+      story.validator_container_id = validatorResult.containerId ?? null;
       story.validator_cost_usd = validatorResult.token_usage.estimated_cost_usd;
       story.validator_tokens = validatorResult.token_usage.total_tokens;
       loopCostUsd += validatorResult.token_usage.estimated_cost_usd;
       loopPromptTokens += validatorResult.token_usage.prompt_tokens;
       loopCompletionTokens += validatorResult.token_usage.completion_tokens;
       loopTotalTokens += validatorResult.token_usage.total_tokens;
+      if (validatorResult.containerId) {
+        buildState.containers.push({
+          container_id: validatorResult.containerId,
+          role: "build_validator",
+          story_id: story.story_id,
+          log_path: `runs/${item.run_id}/containers/stage-build-${story.story_id}-${story.retry_count}.log`,
+        });
+      }
       this.emitTurnSpans(item.run_id, story.story_id, "build_validator", validatorResult.jsonEvents ?? [], stageSpan);
       this.writeBuildState(item.run_id, buildState);
 
@@ -438,6 +491,10 @@ export class BuildLoopRunner implements StageRunner {
 
     // 6. All stories done — build aggregated artifact
     this.endSpan(stageSpan, true);
+    // Live-state: mark build stage completed
+    try {
+      writeLiveState(item.run_id, { stage: "build", status: "completed", container: null });
+    } catch { /* non-fatal */ }
     const aggregatedTokens = {
       prompt_tokens: loopPromptTokens,
       completion_tokens: loopCompletionTokens,

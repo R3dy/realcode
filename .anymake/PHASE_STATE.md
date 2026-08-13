@@ -6,6 +6,78 @@
 >
 > **Next action, in order:**
 >
+> **Dashboard crash + pipeline reliability fixes SHIPPED (2026-08-13, session 24):**
+> - Royce reported: realcode run failed AND dashboard crashed with
+>   "Application error: a client-side exception has occurred" when viewing the
+>   failed run. This was unacceptable.
+> - ROOT CAUSE: CurrentActivityBar.tsx:48 did `(data as ...).live_state` where
+>   `data` is null on first render (usePoll returns null until first fetch).
+>   TypeScript cast is erased at runtime -> `null.live_state` -> crash. Fixed
+>   with optional chaining: `data?.live_state ?? liveState`.
+> - BUILT VISIBILITY FOR BUILD WORKERS: the A11.1 design intentionally disabled
+>   liveCapture for build worker/validator sandboxes. This made worker timeouts
+>   completely invisible (no container logs, no trace events, no container_id).
+>   Enabled liveCapture for ALL dispatches. BuildLoopRunner now stores
+>   worker_container_id + validator_container_id in build-state.json and pushes
+>   container entries. Container log files now include storyId for uniqueness.
+> - ADDED jsonrepair: LLMs emit literal newlines + unescaped quotes inside JSON
+>   string values (especially in multi-line markdown fields like epics_md).
+>   JSON.parse rejects these. Added 3-layer fallback: JSON.parse -> control-char
+>   sanitizer -> jsonrepair library. This was causing spec/discover stages to
+>   fail with "No <artifact> JSON block found" even though the artifact WAS
+>   present in the output.
+> - STRENGTHENED WORKER PROMPT: workers now create code files FIRST (not
+>   explore), run `npm install` if node_modules doesn't exist, run ONLY their
+>   specific test file (not `npm test` which runs all 256 tests including
+>   Docker-based ones), and have a stronger node_modules traversal guard.
+> - PER-WORKER TIMEOUT: 10 min for workers, 5 min for validators (was inheriting
+>   the full 20-min stage timeout).
+> - SPEC TIMEOUT: 5 min -> 8 min (spec agent generates long responses).
+> - LIVE-STATE FROM BUILD LOOP: the build stage now writes live-state
+>   (stage="build", status="running") so the dashboard shows activity during
+>   the build.
+> - 256 tests pass (1 test updated to reflect new liveCapture behavior).
+>
+> **End-to-end run result (run_b03d63bc):**
+> - Frame -> Discover -> Plan -> Spec -> Build all passed (jsonrepair fix
+>   unblocked spec/discover).
+> - 4 of 7 stories shipped: Footer component, AppShell mount, route audit,
+>   footer-presence tests. 39 tests pass.
+> - Footer.tsx created with exact tagline, mounted in AppShell, committed.
+> - Run escalated at 20-min wall-clock deadline (3 QA stories didn't run).
+>   $0.56/$8 spent. The footer IS working end-to-end.
+>
+> **CHANGES ARE UNCOMMITTED.** Need Royce to approve commit + push.
+>
+> **What's next:**
+> 1. Royce to approve commit + push of all session 24 changes.
+> 2. The spec agent generates too many stories (7 for a simple footer) -- the
+>    20-min build budget can only handle ~4. Spec prompt engineering needed.
+> 3. Consider increasing build wall-clock timeout from 20 min to 30 min for
+>    larger spec outputs.
+>
+> **Issue #11 SHIPPED (2026-08-12, session 23):**
+> - Realtime visibility across ALL pipeline stages (not just build).
+> - 3 stories via anymake-agile (A11.1 engine → A11.2 API → A11.3 UI):
+>   - A11.1 (PR #12, ee10e1c): Engine writes live.json during every non-build
+>     stage — container ID, log path, trace events, token usage, cost.
+>     Spawn-time cidfile poll so container appears mid-stage. Catch path
+>     writes status:"failed". Build loop untouched (liveCapture flag).
+>   - A11.2 (PR #13, c6094ed): Dashboard API surfaces live.json —
+>     getLiveState(), listContainers merge, getTraceEvents merge,
+>     getContainerLogs reads live FIRST (1-C6), remove "built" from
+>     TERMINAL_RUN_STATUSES so ship stage streams (1-C3).
+>   - A11.3 (PR #14, b70ae32): Dashboard UI — new Pipeline Activity section
+>     with CurrentActivityBar, LiveTraceStream, ContainerGrid,
+>     ContainerLogViewer. hasLiveActivity = Boolean(live_state). buildActive
+>     → runActive prop. Terminal runs show last-known state.
+> - 256 tests (206 baseline + 50 new). 4 plan review rounds. Validator PASS
+>   on all 3. Experience Runner PASS — drove real run run_663da9e6 from
+>   frame through spec, verified live visibility at every stage.
+> - Also fixed pre-existing engine.ts TypeScript errors (non-null assertions
+>   in getTraceEvents) that broke next build.
+> - Tag: issue-11. Revert: git revert b70ae32 (or all 3 squash commits).
+>
 > **Schema validation fix SHIPPED (2026-08-12, session 23):**
 > - run_323c3c93 failed at story 3.2 because the worker's artifact had
 >   `"failure_type": null` (result was "success") and Zod's `.optional()`
@@ -136,10 +208,10 @@
 
 ---
 
-**Last updated:** 2026-08-12 (session 23)
-**Updated by:** Claude (schema fix + dashboard investigation)
-**Current phase:** Phase 5 -- Launch (schema fix applied, engine rebuilt)
-**Current step:** Do a real e2e run to verify the build loop completes past story 3.2 with the schema fix.
+**Last updated:** 2026-08-13 (session 24 — dashboard crash fix + pipeline reliability)
+**Updated by:** Claude (dashboard crash + build worker visibility + jsonrepair)
+**Current phase:** Phase 5 -- Launch (dashboard crash fixed, pipeline reliability improved)
+**Current step:** Royce to approve commit + push. Then: spec prompt engineering to reduce story count.
 **project_type:** agentic-harness
 **autonomous_mode:** true
 

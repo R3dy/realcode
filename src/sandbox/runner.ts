@@ -230,13 +230,17 @@ export class SandboxRunner {
       if (opts.liveCapture === true && opts.runId) {
         const containerAttempt = opts.containerAttempt ?? 0;
         const stageId = opts.stageId ?? opts.containerRole ?? "stage";
+        const storyId = opts.storyId ?? "stage";
         // Tee log path lives under the engine's data dir (container-local),
         // which is bind-mounted to the host — no host-path translation needed
         // for a file the engine writes itself (CONVENTIONS.md).
+        // Include storyId in the filename so each worker/validator gets a
+        // unique log file (previously all build workers shared stage-build-0.log
+        // and overwrote each other's logs).
         logFilePath = path.join(
           containerDataDir,
           "runs", opts.runId, "containers",
-          `stage-${stageId}-${containerAttempt}.log`,
+          `stage-${stageId}-${storyId}-${containerAttempt}.log`,
         );
         // Pre-spawn live.json container population (1-C2): name + log_path are
         // known now, container_id is not yet. Wrapped in try/catch — a failure
@@ -249,7 +253,7 @@ export class SandboxRunner {
               role: opts.containerRole ?? stageId,
               status: "running",
               started_at: Date.now(),
-              log_path: `runs/${opts.runId}/containers/stage-${stageId}-${containerAttempt}.log`,
+              log_path: `runs/${opts.runId}/containers/stage-${stageId}-${storyId}-${containerAttempt}.log`,
             },
           });
         } catch (err) {

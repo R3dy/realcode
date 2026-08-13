@@ -35,8 +35,8 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe("1-C1: build dispatch path receives NO identity fields / liveCapture (byte-identity)", () => {
-  it("AgentStageRunner.run() invoked via BuildLoopRunner passes no liveCapture/identity to sandbox.run", async () => {
+describe("1-C1: build dispatch path NOW receives liveCapture + identity (visibility fix)", () => {
+  it("AgentStageRunner.run() invoked via BuildLoopRunner passes liveCapture/identity to sandbox.run", async () => {
     const runId = "run_1c1";
     // spec.json (build-loop needs a stories array)
     storage.write(`runs/${runId}/spec.json`, JSON.stringify({
@@ -72,7 +72,7 @@ describe("1-C1: build dispatch path receives NO identity fields / liveCapture (b
           stderr: "",
           jsonEvents: undefined,
           timedOut: false,
-          containerId: "",
+          containerId: "fake-cid-abc123",
         });
       },
     };
@@ -94,19 +94,22 @@ describe("1-C1: build dispatch path receives NO identity fields / liveCapture (b
     // One Worker sandbox was dispatched on the build path.
     expect(recorded).toHaveLength(1);
     const opts = recorded[0];
-    // Build path is byte-identical to pre-A11.1: NO identity fields, NO liveCapture.
-    expect(opts.liveCapture).toBeUndefined();
-    expect(opts.runId).toBeUndefined();
-    expect(opts.storyId).toBeUndefined();
-    expect(opts.containerRole).toBeUndefined();
-    expect(opts.containerAttempt).toBeUndefined();
-    expect(opts.stageId).toBeUndefined();
-    expect(opts.onJsonLine).toBeUndefined();
-    // The worker escalated (no artifact) — but the build-state containers array
-    // stays empty (nothing was captured on the build path).
+    // Build path NOW receives liveCapture + identity fields (visibility fix —
+    // workers previously had zero container logs / trace events / container_id,
+    // making worker timeouts completely undiagnosable).
+    expect(opts.liveCapture).toBe(true);
+    expect(opts.runId).toBe(runId);
+    expect(opts.storyId).toBe("1");
+    expect(opts.containerRole).toBe("build_worker");
+    expect(opts.containerAttempt).toBe(0);
+    expect(opts.stageId).toBe("build");
+    expect(typeof opts.onJsonLine).toBe("function");
+    // The worker escalated (no artifact) — container_id is still tracked.
     expect(result.output_status).toBe("escalate");
-    const buildState = JSON.parse(storage.read(`runs/${runId}/build-state.json`)!) as { containers: unknown[] };
-    expect(buildState.containers).toEqual([]);
+    const buildState = JSON.parse(storage.read(`runs/${runId}/build-state.json`)!) as { containers: Array<{ container_id: string }>; stories: Array<{ worker_container_id: string | null }> };
+    expect(buildState.containers).toHaveLength(1);
+    expect(buildState.containers[0].container_id).toBe("fake-cid-abc123");
+    expect(buildState.stories[0].worker_container_id).toBe("fake-cid-abc123");
   });
 
   it("AgentStageRunner.run() DIRECT non-build dispatch DOES pass liveCapture + identity fields", async () => {
