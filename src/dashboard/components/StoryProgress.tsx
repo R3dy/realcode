@@ -97,7 +97,7 @@ export function StoryProgress({ runId, buildActive }: { runId: string; buildActi
               <span className="min-w-0 flex-1 truncate text-sm text-ink-100">{s.title}</span>
               <Badge tone={tone}>{STATUS_LABEL[s.status]}</Badge>
               {s.retry_count > 0 && (
-                <span className="font-mono text-[10px] text-status-warn">retry {s.retry_count}</span>
+                <span className="font-mono text-[11px] text-status-warn">retry {s.retry_count}</span>
               )}
               <span className="hidden items-center gap-1 text-[11px] text-ink-500 sm:inline-flex">
                 <Coins className="h-3 w-3" />${cost.toFixed(3)}

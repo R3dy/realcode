@@ -1,14 +1,16 @@
 "use client";
 import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, ListTree, Settings, Plus, SlidersHorizontal, X, Terminal, Play } from "lucide-react";
+import { Activity, Settings, Plus, SlidersHorizontal, X } from "lucide-react";
 import { Button, cn } from "@/components/ui";
 import { RunControls } from "@/components/RunControls";
+import { NewRunDialog } from "@/components/NewRunDialog";
 import { usePoll, type ControlDoc } from "@/lib/api";
 
+// Traces intentionally omitted: no /traces route exists. Live tracing lives on
+// the run-detail page (LiveTraceStream). Re-add when a standalone traces view ships.
 const NAV = [
   { label: "Runs", icon: Activity, href: "/" },
-  { label: "Traces", icon: ListTree, href: "/traces" },
   { label: "Settings", icon: Settings, href: "/settings" },
 ];
 
@@ -29,6 +31,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
+      {/* Desktop sidebar nav (>= md). Mobile uses the bottom nav below. */}
       <aside className="sticky top-0 hidden h-screen w-16 flex-col items-center gap-1 border-r border-ink-800/80 bg-ink-950/60 py-4 md:flex">
         <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-brand-gradient text-sm font-bold text-white shadow-glow">r</div>
         {NAV.map((n) => (
@@ -44,40 +47,73 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-ink-800/80 bg-ink-950/80 px-4 backdrop-blur-md md:px-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-gradient text-xs font-bold text-white md:hidden">r</div>
+        <header className="pt-safe sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-ink-800/80 bg-ink-950/80 px-4 backdrop-blur-md md:gap-3 md:px-6">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-gradient text-xs font-bold text-white md:hidden">r</div>
             <span className="font-display text-base font-bold tracking-tight text-ink-100">realcode</span>
             <span className="hidden rounded-md border border-ink-700 bg-ink-850 px-1.5 py-0.5 font-mono text-[10px] text-ink-500 sm:inline">v0.1 dev</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={() => setControlsOpen(true)}
+              title={`Run mode: ${mode}`}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors",
                 modeTone,
               )}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-current" />
-              <span className="font-mono">{mode}</span>
+              {/* Hide the mode word on the narrowest screens; the colored dot +
+                  border still communicate state. */}
+              <span className="font-mono hidden sm:inline">{mode}</span>
               <SlidersHorizontal className="h-3 w-3 opacity-60" />
             </button>
-            <Button onClick={() => setNewOpen(true)} className="h-8 px-3">
-              <Plus className="h-4 w-4" /> New run
+            <Button onClick={() => setNewOpen(true)} className="h-8 px-3" title="New run">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">New run</span>
             </Button>
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-5 md:px-6 md:py-6">{children}</main>
+        {/* Bottom padding on main so content clears the mobile bottom nav. */}
+        <main className="flex-1 px-4 py-5 pb-24 md:px-6 md:py-6 md:pb-6">{children}</main>
       </div>
+
+      {/* Mobile bottom navigation (replaces the desktop sidebar on < md). */}
+      <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 flex h-16 items-stretch border-t border-ink-800/80 bg-ink-950/90 backdrop-blur-md md:hidden">
+        {NAV.filter((n) => n.href !== "/").map((n) => (
+          <a
+            key={n.label}
+            href={n.href}
+            className="flex flex-1 flex-col items-center justify-center gap-0.5 text-ink-500 transition-colors hover:text-ink-100"
+          >
+            <n.icon className="h-5 w-5" />
+            <span className="text-[10px] font-medium">{n.label}</span>
+          </a>
+        ))}
+        <a href="/" className="flex flex-1 flex-col items-center justify-center gap-0.5 text-ink-500 transition-colors hover:text-ink-100">
+          <Activity className="h-5 w-5" />
+          <span className="text-[10px] font-medium">Runs</span>
+        </a>
+        <button
+          onClick={() => setNewOpen(true)}
+          className="flex flex-1 flex-col items-center justify-center gap-0.5 text-brand-300 transition-colors hover:text-brand-200"
+          aria-label="New run"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-gradient text-white shadow-glow">
+            <Plus className="h-5 w-5" />
+          </span>
+          <span className="text-[10px] font-medium">New</span>
+        </button>
+      </nav>
 
       <Sheet open={controlsOpen} onClose={() => setControlsOpen(false)} title="Control plane" subtitle="takes effect next dispatch cycle">
         <RunControls mode={mode} onMode={setMode} />
       </Sheet>
 
-      <Sheet open={newOpen} onClose={() => setNewOpen(false)} title="Start a run" subtitle="a raw idea enters the pipeline at frame">
-        <NewRunSheet onClose={() => setNewOpen(false)} />
-      </Sheet>
+      {/* Single canonical New Run flow — the NewRunDialog with project targeting,
+          shared by the header, the board page, and the mobile bottom nav. */}
+      <NewRunDialog open={newOpen} onClose={() => setNewOpen(false)} onCreated={() => {}} />
     </div>
   );
 }
@@ -128,64 +164,6 @@ function Sheet({
         </>
       )}
     </AnimatePresence>
-  );
-}
-
-function NewRunSheet({ onClose }: { onClose: () => void }) {
-  const [idea, setIdea] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ runId?: string; error?: string } | null>(null);
-
-  async function startRun() {
-    if (!idea.trim()) return;
-    setSubmitting(true);
-    setResult(null);
-    try {
-      const res = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idea }) });
-      if (!res.ok) throw new Error(`${res.status}`);
-      const data = await res.json();
-      setResult({ runId: data.run_id });
-      setTimeout(() => { onClose(); setIdea(""); setResult(null); }, 2000);
-    } catch (e) {
-      setResult({ error: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="mb-1.5 block text-xs font-medium text-ink-500">Idea</label>
-        <textarea
-          value={idea}
-          onChange={(e) => setIdea(e.target.value)}
-          rows={4}
-          placeholder="Build a markdown-to-PDF CLI with watch mode"
-          className="w-full resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-2.5 text-sm text-ink-100 placeholder:text-ink-600 transition-colors focus:border-brand-500 focus:outline-none"
-        />
-      </div>
-      <div className="rounded-lg border border-ink-700 bg-ink-950 p-3">
-        <div className="mb-1 flex items-center gap-1.5 text-xs text-ink-500">
-          <Terminal className="h-3.5 w-3.5" /> equivalent CLI
-        </div>
-        <code className="block font-mono text-xs text-brand-300">
-          realcode run &quot;{idea || "..."}&quot;
-        </code>
-      </div>
-      <Button className="w-full" disabled={!idea.trim() || submitting} onClick={startRun}>
-        <Play className="h-4 w-4" /> {submitting ? "Starting..." : "Start run"}
-      </Button>
-      {result?.runId && (
-        <p className="text-center text-xs text-status-pass">Started {result.runId} — refreshing...</p>
-      )}
-      {result?.error && (
-        <p className="text-center text-xs text-status-fail">Error: {result.error}</p>
-      )}
-      <p className="text-center text-[11px] text-ink-600">
-        Enters <span className="font-mono text-ink-500">frame</span>, then discover, plan, spec, build, ship. Cap $8.00.
-      </p>
-    </div>
   );
 }
 

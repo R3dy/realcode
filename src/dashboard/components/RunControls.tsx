@@ -119,7 +119,7 @@ export function RunControls({
               <select
                 value={overrides[s] ?? "tier"}
                 onChange={(e) => handleOverride(s, e.target.value)}
-                className="flex-1 rounded-md border border-ink-700 bg-ink-850 px-2 py-1.5 font-mono text-xs text-ink-100 focus:border-brand-500 focus:outline-none"
+                className="min-h-[36px] flex-1 rounded-md border border-ink-700 bg-ink-850 px-2 py-1.5 font-mono text-xs text-ink-100 focus:border-brand-500 focus:outline-none"
               >
                 <option value="tier">tier default</option>
                 <option value="openrouter/z-ai/glm-5.2">glm-5.2 · default</option>

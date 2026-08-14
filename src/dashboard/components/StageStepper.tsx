@@ -15,7 +15,7 @@ export function StageStepper({
   return (
     <div
       className={cn(
-        "flex items-center overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "scroll-fade-r flex items-center overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         compact ? "gap-1" : "gap-1.5",
       )}
     >
@@ -28,8 +28,8 @@ export function StageStepper({
             <div className="flex items-center gap-1.5">
               <span
                 className={cn(
-                  "flex items-center justify-center rounded-md border text-[10px] font-semibold uppercase tracking-wide transition-colors",
-                  compact ? "h-5 px-1.5" : "h-6 px-2",
+                  "flex items-center justify-center rounded-md border text-[11px] font-semibold uppercase tracking-wide transition-colors",
+                  compact ? "h-6 px-1.5" : "h-7 px-2",
                   status === "pass" && "border-status-pass/40 bg-status-pass/10 text-status-pass",
                   status === "running" && "border-status-run/50 bg-status-run/10 text-status-run",
                   status === "fail" && "border-status-fail/50 bg-status-fail/10 text-status-fail",
@@ -49,7 +49,7 @@ export function StageStepper({
                 <span className="font-mono">{name}</span>
               </span>
               {status === "running" && isCurrent && (
-                <span className="hidden sm:inline text-[10px] text-status-run/80 font-mono">live</span>
+                <span className="hidden text-[10px] font-mono text-status-run/80 sm:inline">live</span>
               )}
             </div>
             {i < STAGE_ORDER.length - 1 && (

@@ -165,17 +165,17 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       {/* Header card */}
-      <Card className="p-5">
-        <div className="flex items-start justify-between gap-4">
+      <Card className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Link href="/">
                 <Button variant="ghost" className="h-8 px-2">
                   <ChevronLeft className="h-4 w-4" />
                   Runs
                 </Button>
               </Link>
-              <span className="font-mono text-xs text-ink-500">{run.run_id}</span>
+              <span className="truncate font-mono text-xs text-ink-500" title={run.run_id}>{run.run_id}</span>
               <Badge tone={meta.tone} icon={meta.icon}>
                 {meta.label}
               </Badge>
@@ -295,31 +295,42 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
         })}
       </div>
 
-      {/* Build Stage Detail section (A4.5 — mission-control visibility) */}
+      {/* Build Stage Detail section (A4.5 — mission-control visibility).
+          StoryProgress is unique to this section. The container grid / trace
+          stream / log viewer trio is rendered in the Pipeline Activity section
+          above when live_state exists; to avoid double-polling + double SSE +
+          visual duplication, only render the trio here when there is NO
+          live_state (i.e. a finished build with no live activity). */}
       {showBuildDetail && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <StoryProgress runId={params.id} buildActive={buildStageActive} />
-            <ContainerGrid
-              runId={params.id}
-              buildActive={buildStageActive}
-              selectedCid={selectedContainer?.container_id ?? null}
-              onSelect={(c) =>
-                setSelectedContainer({
-                  container_id: c.container_id,
-                  name: c.name,
-                  role: c.role,
-                  story_id: c.story_id,
-                })
-              }
-            />
+            {!hasLiveActivity && (
+              <ContainerGrid
+                runId={params.id}
+                buildActive={buildStageActive}
+                selectedCid={selectedContainer?.container_id ?? null}
+                onSelect={(c) =>
+                  setSelectedContainer({
+                    container_id: c.container_id,
+                    name: c.name,
+                    role: c.role,
+                    story_id: c.story_id,
+                  })
+                }
+              />
+            )}
           </div>
-          <LiveTraceStream runId={params.id} runActive={buildStageActive} />
-          <ContainerLogViewer
-            runId={params.id}
-            container={selectedContainer}
-            runActive={buildStageActive}
-          />
+          {!hasLiveActivity && (
+            <LiveTraceStream runId={params.id} runActive={buildStageActive} />
+          )}
+          {!hasLiveActivity && (
+            <ContainerLogViewer
+              runId={params.id}
+              container={selectedContainer}
+              runActive={buildStageActive}
+            />
+          )}
         </div>
       )}
 

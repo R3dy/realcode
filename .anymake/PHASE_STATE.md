@@ -6,6 +6,55 @@
 >
 > **Next action, in order:**
 >
+> **Dashboard mobile-first design audit + fixes SHIPPED (2026-08-14, session 26):**
+> - Royce asked for a full mobile-first design audit of the dashboard and to
+>   address everything that didn't follow mobile-first theory. A prior
+>   change-agent pass (commit b4fed98) had only scratched the surface
+>   (viewport + a few flex-wraps). This session did the deep audit + fixes.
+> - **Mobile navigation:** the desktop sidebar (`hidden md:flex`) had NO mobile
+>   replacement, so Runs/Settings were unreachable on phones. Added a fixed
+>   bottom nav bar (`md:hidden`) with Runs / New-run FAB / Settings, plus
+>   `pb-safe` so content clears it and the home indicator.
+> - **Dead link removed:** NAV had a `/traces` entry but no /traces route exists
+>   -> 404 on all devices. Removed (live tracing lives on the run-detail page
+>   via LiveTraceStream; comment left to re-add when a standalone traces view
+>   ships).
+> - **Duplicate components fixed:** the run-detail page rendered
+>   ContainerGrid + LiveTraceStream + ContainerLogViewer TWICE when
+>   hasLiveActivity && showBuildDetail (double polling, double SSE connection,
+>   visual duplication). The Build Stage Detail section now renders the trio
+>   ONLY when there is no live_state (StoryProgress stays unique).
+> - **Consolidated New Run flow:** AppShell had its own NewRunSheet (no project
+>   targeting) while the board page used NewRunDialog (with targeting). Removed
+>   NewRunSheet; the header + mobile nav now open the canonical NewRunDialog.
+> - **Touch targets:** filter buttons, trace filter selects, log tail toggle,
+>   resume-scroll button, per-stage model selects all bumped to min-h 32-36px
+>   (was ~24-28px, below the 44px floor).
+> - **Safe-area insets:** added `.pt-safe`/`.pb-safe` utilities in globals.css;
+>   applied to the sticky header (top) and mobile bottom nav (bottom) so
+>   notched/home-indicator phones don't lose content under the chrome.
+> - **StageStepper:** 8 stages overflow on mobile; the hidden scrollbar gave no
+>   affordance. Added a `scroll-fade-r` right-edge mask so users can see more
+>   stages scroll. Bumped stage-label text from 10px -> 11px and pill height.
+> - **Run-detail header:** back-button + run_id + badge row now wraps and the
+>   run_id truncates instead of overflowing on narrow screens.
+> - **Tiny text:** bumped the worst text-[10px] offenders (stage labels, retry
+>   count) to 11px minimum.
+> - Verified: `tsc --noEmit` clean, `next build` clean (all routes), 61/61
+>   dashboard tests pass. Dashboard container rebuilt + restarted; live at
+>   localhost:3001 returning HTTP 200 with the new markup (`pb-safe`,
+>   `aria-label="New run"`, bottom nav) confirmed in served HTML.
+> - **CHANGES ARE UNCOMMITTED** (working tree). Need Royce to approve commit +
+>   push. Rebuilt docker image is running the new code already.
+>
+> **What's next:**
+> 1. Royce to approve commit + push of session 25 (conductor) + session 26
+>    (this audit) changes.
+> 2. Optionally drive the dashboard on a real phone-width viewport to
+>    subjectively confirm the bottom nav + safe areas + stage stepper.
+> 3. A standalone /traces route is a PARKING_LOT item (if a cross-run trace
+>    timeline view is wanted later, re-add the NAV entry then).
+>
 > **Issue #16 SHIPPED (2026-08-13, session 25) — Conductor + dual-flow architecture:**
 > - Royce identified the root disease: realcode forced every request through the
 >   same 6-stage greenfield pipeline (frame→discover→plan→spec→build→ship). A
@@ -246,10 +295,10 @@
 
 ---
 
-**Last updated:** 2026-08-13 (session 25 — conductor + dual-flow architecture)
-**Updated by:** Claude (issue #16: conductor, live-mount, change flow)
-**Current phase:** Phase 5 -- Launch (conductor + dual-flow architecture shipped)
-**Current step:** Royce to approve commit + push. Then: test with a real change that modifies files.
+**Last updated:** 2026-08-14 (session 26 — dashboard mobile-first design audit + fixes)
+**Updated by:** Claude (mobile-first audit: bottom nav, dedup, touch targets, safe areas)
+**Current phase:** Phase 5 -- Launch (mobile-first dashboard audit shipped)
+**Current step:** Royce to approve commit + push of session 25 + 26 changes. Optional phone-viewport smoke.
 **project_type:** agentic-harness
 **autonomous_mode:** true
 
@@ -306,6 +355,7 @@
 | 2026-08-11 | 19 | Phase 5 (bugfix) | Fixed workspace seeding recursion: [target: realcode] copied repo incl data/ -> 138 levels nesting (1.8GB) -> discover timeout. Fix: COPY_EXCLUDE_DIRS += data/tests, COPY_EXCLUDE_FILES for lockfiles. Applied in BOTH dispatcher.ts + dashboard/lib/engine.ts. Frame+discover timeouts 5min->10min. New run run_1b51b69b: frame pass (14K tokens, was 76K), discover pass (31K tokens, was 147K; 3min, was timeout). 90/90 tests. | Monitor run_1b51b69b through pipeline |
 | 2026-08-11 | 20 | Phase 5 (agile #3) | Plan stage timeout fix. Root cause: plan.yaml system_prompt referenced anymake files (PHASE_GUIDES, TEMPLATES) not in sandbox container -> agent searched + explored workspace -> 139K tokens -> 5min timeout. 3 consecutive runs failed at plan. Fix: (1) stage-graph plan timeout 300000->600000, (2) rewrote plan.yaml system_prompt self-contained (no external file refs, PRD/ADR/UX format inline, "do NOT explore workspace"), (3) fillTemplate truncation 2000->8000. Verified run_b6381e0d shipped e2e: plan 3.6K tokens (was 139K), $0.009 (was $0.11), ~1min. Full run $0.61/$8. 90/90 tests. Issue #3 closed. CHANGES UNCOMMITTED. | Royce to approve commit + push |
 | 2026-08-11 | 21 | Phase 5 (build fix) | Build-stage timeout fix. run_0ba334d1 escalated at build (20-min timeout, 1.27M prompt tokens, $1.48). Root cause: same shape as plan-stage bug -- build.yaml lacked the "do NOT explore workspace" guard. Fix: applied context-discipline guard to build.yaml (no node_modules/data/.git/dist/.next/coverage traversal, ls not recursive, read only package.json + named files). Committed WITH session-20 changes. Dead run deleted. PARKING_LOT updated (escalated=terminal UX gap). 90/90 tests. | Validate fix on small idea; then tackle 17-story redesign |
+| 2026-08-14 | 26 | Phase 5 (agile UX) | Dashboard mobile-first design audit + fixes. Prior pass (b4fed98) was shallow. Deep fixes: mobile bottom nav (sidebar was unreachable on phones), removed dead /traces link (no route), deduped ContainerGrid/LiveTraceStream/ContainerLogViewer (rendered twice -> double polling/SSE), consolidated New Run flows (NewRunSheet -> NewRunDialog), touch targets 24-28px -> 32-36px, safe-area insets (.pt-safe/.pb-safe), StageStepper scroll-fade affordance + 10px->11px text, run-detail header wraps/truncates. tsc clean, next build clean, 61/61 dashboard tests pass. Dashboard container rebuilt + live (HTTP 200). CHANGES UNCOMMITTED. | Royce to approve commit + push; optional phone-viewport smoke |
 
 ---
 

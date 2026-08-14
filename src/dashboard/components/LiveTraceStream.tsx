@@ -145,7 +145,7 @@ export function LiveTraceStream({ runId, runActive }: { runId: string; runActive
           <button
             type="button"
             onClick={() => setPaused((p) => !p)}
-            className="inline-flex items-center gap-1 rounded-md border border-ink-700 bg-ink-800 px-2 py-1 text-[11px] text-ink-300 transition-colors hover:bg-ink-700"
+            className="inline-flex min-h-[32px] items-center gap-1 rounded-md border border-ink-700 bg-ink-800 px-2 py-1 text-[11px] text-ink-300 transition-colors hover:bg-ink-700"
             title={paused ? "Resume stream" : "Pause stream"}
           >
             {paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
@@ -245,7 +245,7 @@ function FilterSelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        "rounded-md border border-ink-700 bg-ink-800 px-2 py-1 font-mono text-[11px] text-ink-300",
+        "min-h-[32px] rounded-md border border-ink-700 bg-ink-800 px-2 py-1 font-mono text-[11px] text-ink-300",
         "focus:border-brand-500 focus:outline-none",
       )}
     >

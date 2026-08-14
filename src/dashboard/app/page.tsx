@@ -67,7 +67,7 @@ export default function BoardPage() {
             <button
               key={f.id}
               onClick={() => setFilter(f.id)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                 filter === f.id ? "bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30" : "text-ink-500 hover:bg-ink-800 hover:text-ink-100"
               }`}
             >

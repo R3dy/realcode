@@ -96,7 +96,7 @@ export function ContainerLogViewer({
         <button
           type="button"
           onClick={() => setTail((t) => !t)}
-          className="inline-flex items-center gap-1 rounded-md border border-ink-700 bg-ink-800 px-2 py-1 font-mono text-[11px] text-ink-300 transition-colors hover:bg-ink-700"
+          className="inline-flex min-h-[32px] items-center gap-1 rounded-md border border-ink-700 bg-ink-800 px-2 py-1 font-mono text-[11px] text-ink-300 transition-colors hover:bg-ink-700"
         >
           <ArrowDownToLine className="h-3 w-3" />
           {tail ? "tail 100" : "full"}
@@ -131,7 +131,7 @@ export function ContainerLogViewer({
               if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
             }}
             className={cn(
-              "absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md",
+              "absolute bottom-2 right-2 inline-flex min-h-[32px] items-center gap-1 rounded-md",
               "border border-ink-700 bg-ink-800/90 px-2 py-1 font-mono text-[11px] text-ink-300",
               "backdrop-blur hover:bg-ink-700",
             )}
