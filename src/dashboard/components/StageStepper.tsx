@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "@/components/ui";
-import { STAGE_ORDER, type StageName, type StageStatus } from "@/lib/data";
+import { type StageName, type StageStatus } from "@/lib/data";
 import { Check, X } from "lucide-react";
 
 export function StageStepper({
@@ -19,9 +19,12 @@ export function StageStepper({
         compact ? "gap-1" : "gap-1.5",
       )}
     >
-      {STAGE_ORDER.map((name, i) => {
-        const s = stages.find((x) => x.name === name);
-        const status = s?.status ?? "pending";
+      {/* Iterate the stages PROP (which the caller may have already filtered),
+          NOT the full canonical STAGE_ORDER. This lets agile change-flow runs
+          pass only [conductor, change] and have the rail show just those two,
+          instead of 6 empty build-flow chips. */}
+      {stages.map((s, i) => {
+        const { name, status } = s;
         const isCurrent = name === current;
         return (
           <div key={name} className="flex shrink-0 items-center">
@@ -52,7 +55,7 @@ export function StageStepper({
                 <span className="hidden text-[10px] font-mono text-status-run/80 sm:inline">live</span>
               )}
             </div>
-            {i < STAGE_ORDER.length - 1 && (
+            {i < stages.length - 1 && (
               <div
                 className={cn(
                   "mx-0.5 h-px",
