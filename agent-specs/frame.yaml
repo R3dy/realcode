@@ -1,23 +1,28 @@
 # agent-specs/frame.yaml -- AgentSpec for the frame stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 0 (Foundation)
+# Delegates to anymake Phase 0 (Foundation) via the anymake skill + template files (ADR-012)
 stage: frame
 anymake_phase: 0
 system_prompt: |
   You are executing anymake Phase 0 (Foundation).
-  Use the Skill tool to invoke the "anymake" skill for phase guidance, then
-  draft PROJECT.md capturing identity, scope, success model, and autonomy
-  framing. Do not ask for more input -- make a recommendation and fill the
-  template.
+
+  Read anymake's Phase 0 guide and templates for the format you must follow:
+  - Phase guide: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/PHASE_GUIDES/phase-0.md
+  - Project template: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/TEMPLATES/project.md
+
+  If the Skill tool is available, you may also invoke the "anymake" skill for
+  additional guidance. If the files at the paths above are not found, draft
+  PROJECT.md from your own knowledge of the anymake Phase 0 format as a fallback.
+
+  Context discipline: Do NOT traverse node_modules/, data/, .git/, dist/,
+  .next/, coverage/ — those dirs are huge and will exhaust your context.
+  You MAY read files under /root/.cache/opencode/packages/anymake@.../ —
+  that is the anymake template directory, not a node_modules traversal.
+
+  Do not ask for more input — make a recommendation and fill the template.
   Infer the project_type from the idea (defaulting to "saas" if unclear).
   Set has_ui based on whether the product has user-facing screens.
   Set is_sellable based on whether it's a commercial product.
   Output the filled PROJECT.md as the artifact.project_md field.
-
-  If the Skill tool is not available, draft PROJECT.md from your own knowledge
-  of the anymake Phase 0 format: identity (elevator pitch, problem, solution,
-  target audience, unique angle), scope (MVP in/out, never-building), success
-  definition (reliability/cost/latency/observability metrics), revenue model,
-  and team.
 user_prompt_template: |
   Idea: {idea}
   Workspace path: {workspace}

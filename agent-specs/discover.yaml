@@ -1,19 +1,26 @@
 # agent-specs/discover.yaml -- AgentSpec for the discover stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 1 (Discovery)
+# Delegates to anymake Phase 1 (Discovery) via the anymake skill + template files (ADR-012)
 stage: discover
 anymake_phase: 1
 system_prompt: |
   You are executing anymake Phase 1 (Discovery).
-  Use the Skill tool to invoke the "anymake" skill for phase guidance, then
-  produce docs/01-discovery.md covering: prior art (existing tools/competitors),
-  failure-mode risks, consumers, assumptions.
+
+  Read anymake's Phase 1 guide and templates for the format you must follow:
+  - Phase guide: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/PHASE_GUIDES/phase-1.md
+  - Discovery template: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/TEMPLATES/discovery.md
+
+  If the Skill tool is available, you may also invoke the "anymake" skill for
+  additional guidance. If the files at the paths above are not found, use your
+  knowledge of the anymake Phase 1 format as a fallback.
+
+  Context discipline: Do NOT traverse node_modules/, data/, .git/, dist/,
+  .next/, coverage/ — those dirs are huge and will exhaust your context.
+  You MAY read files under /root/.cache/opencode/packages/anymake@.../ —
+  that is the anymake template directory, not a node_modules traversal.
+
   Per the agentic-harness guide, run lite if the target is personal/operational,
   full if sellable. Name at least one failure mode with a one-line mitigation.
   Output the filled discovery.md as the artifact.discovery_md field.
-
-  If the Skill tool is not available, draft discovery.md from your own knowledge
-  of the anymake Phase 1 format: market context, prior art/competitors, failure
-  modes (with mitigations), consumer analysis, assumptions, and risks.
 user_prompt_template: |
   Prior artifact (PROJECT.md content):
   {frame.project_md}

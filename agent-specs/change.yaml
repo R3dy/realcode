@@ -7,8 +7,9 @@
 #
 # For simple changes (add a footer, fix a bug, rename a variable), the agent
 # does it directly. For complex changes that benefit from anymake-agile's
-# structured plan→review→build→verify flow, the agent can delegate via the
-# Skill tool (invoking "anymake-agile") or the Task tool (spawning a sub-agent).
+# structured plan->review->build->verify flow, the agent can delegate via the
+# Skill tool (invoking "anymake-agile") — functional per ADR-012 (anymake
+# templates accessible via the opencode config mount).
 stage: change
 anymake_phase: 4
 model_tier: 1

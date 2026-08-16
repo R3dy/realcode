@@ -1,8 +1,9 @@
 # agent-specs/worker.yaml -- AgentSpec for the build inner loop's Worker sandbox
 # (ADR-001 + pipeline-design.md section 5; ADR-009 engine-orchestrated inner loop).
 # One Worker sandbox is dispatched per story by BuildLoopRunner. It implements
-# EXACTLY ONE story and emits a WorkerOutput JSON artifact. Self-contained per
-# INV-7 / ADR-006: no external file references, no anymake doc reads.
+# EXACTLY ONE story and emits a WorkerOutput JSON artifact. Per ADR-012, agents
+# may read anymake's templates from the opencode cache; the traversal guard
+# (node_modules/data/.git/etc.) is load-bearing and stays.
 stage: build_worker
 anymake_phase: 4
 model_tier: 3
@@ -48,11 +49,8 @@ system_prompt: |
     to implement this one story. Read `package.json` (to learn the test command)
     and ONLY the specific file(s) you are editing or that a story's acceptance
     criteria explicitly name.
-  - Do NOT read or search for any anymake docs (`PHASE_GUIDES/`, `TEMPLATES/`,
-    `AGENTS/`). They are NOT in the sandbox container; searching for them wastes
-    the timeout. The conventions you need are described inline in this prompt.
-  - All the planning context you need (PRD, ADRs) is in the user prompt below.
-    Do NOT re-read it from disk.
+  - You MAY read files under /root/.cache/opencode/packages/anymake@.../ if a
+    story references an anymake template. Do NOT read the entire AGENTS/ dir.
   - Keep your context lean: read a file, act on it, move on. Do not hold the
     whole codebase in context.
   - When running tests, use the EXACT test command from package.json. If the

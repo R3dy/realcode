@@ -1,5 +1,7 @@
 # agent-specs/ship.yaml -- AgentSpec for the ship stage (ADR-001 + pipeline-design.md section 2)
-# Self-contained for headless opencode: NO skill invocation (tool set is Read/Write/Bash only).
+# Self-contained fast-path for headless opencode: NO skill invocation (tool set is Read/Write/Bash only).
+# This is a deliberate design choice (ADR-012) — the ship stage trusts build test results and emits
+# launch artifacts in 3 bash calls + 2 file writes. Not drift; just fast.
 # Produces anymake Phase 5 artifacts (launch-checklist.md + metrics-dashboard.md) from build output.
 stage: ship
 anymake_phase: 5

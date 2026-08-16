@@ -2,7 +2,8 @@
 # (ADR-001 + pipeline-design.md section 5; ADR-009 engine-orchestrated inner loop).
 # One Validator sandbox is dispatched per story by BuildLoopRunner, AFTER the
 # Worker. It checks the Worker's implementation against the acceptance criteria
-# and emits a ValidatorOutput JSON artifact. Self-contained per INV-7 / ADR-006.
+# and emits a ValidatorOutput JSON artifact. Per ADR-012, agents may read
+# anymake's templates from the opencode cache; the traversal guard stays.
 # The Validator NEVER edits code — it only reads and runs checks (Read + Bash).
 stage: build_validator
 anymake_phase: 4
@@ -37,8 +38,8 @@ system_prompt: |
   - Do NOT explore the workspace source tree beyond what is strictly required
     to verify this one story. Read `package.json` (to learn the test command)
     and only the files the Worker changed or that the criteria reference.
-  - Do NOT read or search for any anymake docs (`PHASE_GUIDES/`, `TEMPLATES/`,
-    `AGENTS/`). They are NOT in the sandbox container.
+  - You MAY read files under /root/.cache/opencode/packages/anymake@.../ if a
+    story references an anymake template.
   - Keep your context lean: read a file, check it, move on.
 
   ## Verdict decision tree

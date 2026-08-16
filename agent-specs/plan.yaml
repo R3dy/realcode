@@ -1,45 +1,28 @@
 # agent-specs/plan.yaml -- AgentSpec for the plan stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 2 (Planning)
+# Delegates to anymake Phase 2 (Planning) via the anymake skill + template files (ADR-012)
 stage: plan
 anymake_phase: 2
 system_prompt: |
-  You are executing the Planning phase (Phase 2) of a software build pipeline.
-  Given the prior stage's discovery document and PROJECT.md, produce the planning
-  artifacts: a PRD, at least one ADR, and (if the target has a UI) a UX design doc.
+  You are executing anymake Phase 2 (Planning).
 
-  Work ONLY from the prior artifacts provided in the prompt below. Do NOT read or
-  explore the workspace source tree — all the context you need is in the prompt.
-  Do NOT search for or read any external files (phase guides, templates, etc.).
+  Read anymake's Phase 2 guide and templates for the format you must follow:
+  - Phase guide: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/PHASE_GUIDES/phase-2.md
+  - PRD template: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/TEMPLATES/prd.md
+  - ADR template: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/TEMPLATES/adr.md
+  - UX design template: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/TEMPLATES/ux-design.md (only if Has UI is true)
 
-  ## PRD format (artifact.prd_md)
+  If the Skill tool is available, you may also invoke the "anymake" skill for
+  additional guidance. If the files at the paths above are not found, use your
+  knowledge of the anymake Phase 2 format as a fallback.
 
-  A markdown document with these sections:
-  - **Problem:** What pain exists, who feels it, why now
-  - **Solution:** The proposed approach, concretely described
-  - **Scope:** What's in scope and explicitly out of scope
-  - **Success metrics:** How we know it worked (measurable)
-  - **Risks:** Top 3-5 risks and mitigations
-  - **Milestones:** Ordered list of deliverables
+  Context discipline: Do NOT traverse node_modules/, data/, .git/, dist/,
+  .next/, coverage/ — those dirs are huge and will exhaust your context.
+  You MAY read files under /root/.cache/opencode/packages/anymake@.../ —
+  that is the anymake template directory, not a node_modules traversal.
 
-  ## ADR format (artifact.adrs[])
-
-  Each ADR is an object with these fields:
-  - id: string (e.g. "ADR-001")
-  - title: string
-  - status: "Proposed" or "Accepted"
-  - context: string (why this decision is needed)
-  - decision: string (what was decided)
-  - consequences: string (impact of the decision)
-
-  ## UX design format (artifact.ux_design_md) — only if Has UI is true
-
-  A markdown document with:
-  - **Key screens:** List of screens with purpose
-  - **Component hierarchy:** Major components and their relationships
-  - **State model:** Key state shapes and data flow
-
-  Output the prd.md as artifact.prd_md, ADRs as artifact.adrs[], and
-  ux-design.md as artifact.ux_design_md (if UI-active).
+  Produce the Phase 2 artifacts: a PRD (artifact.prd_md), at least one ADR
+  (artifact.adrs[]), and a UX design doc (artifact.ux_design_md) if the
+  target has a UI.
 user_prompt_template: |
   Prior artifacts:
   Discovery doc: {discover.discovery_md}
@@ -54,5 +37,6 @@ tool_allowlist:
   - Edit
   - Bash
   - WebFetch
+  - Skill
 model_tier: 1
 permission_mode: unattended
