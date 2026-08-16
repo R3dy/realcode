@@ -311,9 +311,12 @@ export function deriveStageStatuses(
   for (let i = 0; i < STAGE_ORDER.length; i++) {
     const stage = STAGE_ORDER[i];
     if (isShipped) {
-      // For the agile flow (change), stages after 'change' don't apply.
-      // For the full flow, 'change' and 'conductor' are just 'pass'.
-      result[stage] = "pass";
+      // For the agile flow (change), only conductor + change ran. The 6
+      // build-flow stages have no artifact on disk — mark them "not-reached"
+      // so the UI can collapse them. For the full flow, all 6 stages ran and
+      // have artifacts → "pass". presentArtifacts carries the truth: a stage
+      // is "pass" only if its artifact file exists on disk.
+      result[stage] = presentArtifacts.has(stage) ? "pass" : "not-reached";
     } else if (stage === failedStage) {
       result[stage] = "fail";
     } else if (i < currentIdx) {
