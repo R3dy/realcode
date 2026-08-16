@@ -5,15 +5,17 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
+  ChevronDown,
   Trash2,
   Loader2,
   AlertTriangle,
   Terminal,
   X,
   Coins,
+  Clock,
   Code2,
 } from "lucide-react";
-import { Button, Badge, Card, Skeleton, cn, RUN_STATUS_META } from "@/components/ui";
+import { Button, Badge, Card, Skeleton, StatusDot, cn, RUN_STATUS_META } from "@/components/ui";
 import { StageStepper } from "@/components/StageStepper";
 import { StoryProgress } from "@/components/StoryProgress";
 import { ContainerGrid } from "@/components/ContainerGrid";
@@ -75,6 +77,10 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
     role: string;
     story_id: string;
   } | null>(null);
+  // Progressive-disclosure state for the stage accordions. We only store
+  // user overrides; the default open/closed state is derived per-stage from
+  // its status (running / failed / build-detail stages open by default).
+  const [stageOpen, setStageOpen] = useState<Partial<Record<StageName, boolean>>>({});
 
   const load = useCallback(async () => {
     const detail = await fetchRunDetail(params.id);
@@ -164,56 +170,80 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      {/* Header card */}
-      <Card className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href="/">
-                <Button variant="ghost" className="h-8 px-2">
-                  <ChevronLeft className="h-4 w-4" />
-                  Runs
-                </Button>
-              </Link>
-              <span className="truncate font-mono text-xs text-ink-500" title={run.run_id}>{run.run_id}</span>
-              <Badge tone={meta.tone} icon={meta.icon}>
-                {meta.label}
-              </Badge>
-            </div>
-            <h1 className="font-display text-xl font-bold tracking-tight text-ink-100">
-              {run.idea}
-            </h1>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-500">
-              <span className="inline-flex items-center gap-1">
-                <Coins className="h-3.5 w-3.5" />
-                <span className={cn(overCap && "text-status-fail font-medium")}>
-                  ${run.spent_usd.toFixed(2)}
-                </span>
-                <span className="text-ink-600"> / ${run.cap_usd.toFixed(2)}</span>
-              </span>
-              <span className="font-mono">
-                {new Date(run.created_at).toISOString().replace("T", " ").slice(0, 19)} UTC
-              </span>
-            </div>
-            {/* Cost meter */}
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-800" title={`$${run.spent_usd.toFixed(2)} / $${run.cap_usd.toFixed(2)}`}>
-              <div
-                className={cn("h-full rounded-full transition-all", overCap ? "bg-status-fail" : "bg-brand-500")}
-                style={{ width: `${costPct}%` }}
-              />
-            </div>
-            <div className="pt-1">
-              <StageStepper stages={stepperStages} current={mapped.current} />
-            </div>
-          </div>
+      {/* Header card — mobile-first: stacked, touch-friendly, clear hierarchy */}
+      <Card className="overflow-hidden">
+        {/* Top action row: back on the left, delete on the right */}
+        <div className="flex items-center justify-between gap-2 px-4 pt-3 sm:px-5">
+          <Link href="/">
+            <Button variant="ghost" className="h-9 -ml-2 px-2.5">
+              <ChevronLeft className="h-4 w-4" />
+              <span className="text-sm">Runs</span>
+            </Button>
+          </Link>
           <Button
             variant="destructive"
             onClick={() => setDeleteOpen(true)}
-            className="shrink-0"
+            className="h-9 px-3"
+            aria-label="Delete run"
           >
             <Trash2 className="h-4 w-4" />
             <span className="hidden sm:inline">Delete run</span>
           </Button>
+        </div>
+
+        {/* Body */}
+        <div className="px-4 pb-4 pt-1 sm:px-5">
+          {/* Status + run id */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={meta.tone} icon={meta.icon}>
+              {meta.label}
+            </Badge>
+            <span
+              className="truncate font-mono text-[11px] text-ink-500"
+              title={run.run_id}
+            >
+              {run.run_id}
+            </span>
+          </div>
+
+          {/* Idea title */}
+          <h1 className="mt-2 font-display text-lg font-bold leading-snug tracking-tight text-ink-100 sm:text-xl">
+            {run.idea}
+          </h1>
+
+          {/* Stats row — wraps gracefully on narrow viewports */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+            <span className="inline-flex items-center gap-1.5 text-ink-300">
+              <Coins className="h-3.5 w-3.5 text-ink-500" />
+              <span className={cn("font-medium tabular-nums", overCap && "text-status-fail")}>
+                ${run.spent_usd.toFixed(2)}
+              </span>
+              <span className="text-ink-600">/ ${run.cap_usd.toFixed(2)}</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 font-mono text-ink-500">
+              <Clock className="h-3.5 w-3.5 text-ink-500" />
+              {new Date(run.created_at).toISOString().replace("T", " ").slice(0, 19)} UTC
+            </span>
+          </div>
+
+          {/* Cost meter — full width, gradient fill for a premium feel */}
+          <div
+            className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-ink-800"
+            title={`$${run.spent_usd.toFixed(2)} / $${run.cap_usd.toFixed(2)}`}
+          >
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-500",
+                overCap ? "bg-status-fail" : "bg-brand-gradient",
+              )}
+              style={{ width: `${costPct}%` }}
+            />
+          </div>
+
+          {/* Stage stepper — horizontally scrollable on small screens */}
+          <div className="mt-4 -mx-1 overflow-hidden">
+            <StageStepper stages={stepperStages} current={mapped.current} />
+          </div>
         </div>
       </Card>
 
@@ -245,7 +275,11 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
         </div>
       )}
 
-      {/* Stage cards */}
+      {/* Stage cards — mobile-first progressive disclosure accordions.
+          Status is always visible at a glance; the (potentially large) raw
+          artifact is collapsed by default for completed / not-reached stages
+          and expanded for the live / failed / build-detail stages. The whole
+          header is a tappable target (>=44px) for comfortable touch use. */}
       <div className="space-y-3">
         {STAGE_ORDER.map((stageName) => {
           const status = stages[stageName];
@@ -253,42 +287,79 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
           const tone = DETAIL_STATUS_TONE[status];
           const isBuildStage = stageName === "build";
           const collapseArtifact = isBuildStage && showBuildDetail && !showRawBuild;
+          const defaultOpen = status === "running" || status === "fail" || collapseArtifact;
+          const open = stageOpen[stageName] ?? defaultOpen;
           return (
-            <Card key={stageName} className="p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+            <Card key={stageName} className="overflow-hidden">
+              <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={open}
+                aria-label={`${STAGE_DISPLAY[stageName]} stage — ${status === "not-reached" ? "not reached" : status}`}
+                onClick={() =>
+                  setStageOpen((s) => ({ ...s, [stageName]: !(s[stageName] ?? defaultOpen) }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setStageOpen((s) => ({ ...s, [stageName]: !(s[stageName] ?? defaultOpen) }));
+                  }
+                }}
+                className="flex w-full cursor-pointer select-none items-center justify-between gap-3 px-4 py-3.5 transition-colors hover:bg-ink-850/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-inset sm:px-5"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <StatusDot tone={tone} pulse={status === "running"} />
                   <span className="font-mono text-sm font-medium text-ink-100">
                     {STAGE_DISPLAY[stageName]}
                   </span>
                   <Badge tone={tone}>
                     {status === "not-reached" ? "not reached" : status}
                   </Badge>
+                </div>
+                <div className="flex items-center gap-2">
                   {isBuildStage && showBuildDetail && (
                     <button
                       type="button"
-                      onClick={() => setShowRawBuild((v) => !v)}
-                      className="ml-2 inline-flex items-center gap-1 rounded-md border border-ink-700 bg-ink-800 px-2 py-0.5 font-mono text-[11px] text-ink-300 transition-colors hover:bg-ink-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowRawBuild((v) => !v);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-ink-700 bg-ink-800 px-2 py-1 font-mono text-[11px] text-ink-300 transition-colors hover:bg-ink-700"
+                      aria-label={showRawBuild ? "Hide raw artifact" : "View raw artifact"}
                     >
                       <Code2 className="h-3 w-3" />
-                      {showRawBuild ? "hide raw" : "view raw artifact"}
+                      {showRawBuild ? "hide raw" : "view raw"}
                     </button>
                   )}
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 text-ink-500 transition-transform duration-200",
+                      open && "rotate-180",
+                    )}
+                  />
                 </div>
               </div>
-              {collapseArtifact ? (
-                <p className="text-xs text-ink-600">
-                  Build stage detail shown below. Toggle “view raw artifact” to inspect the raw JSON.
-                </p>
-              ) : artifact ? (
-                <pre className="max-h-[400px] overflow-auto rounded-lg border border-ink-700/40 bg-[#0a0b12] p-3 font-mono text-xs text-ink-300">
-                  {JSON.stringify(artifact, null, 2)}
-                </pre>
-              ) : status === "not-reached" ? (
-                <p className="text-xs text-ink-600">Not reached.</p>
-              ) : status === "fail" ? (
-                <p className="text-xs text-ink-600">Failed — no artifact written.</p>
-              ) : (
-                <p className="text-xs text-ink-600">No artifact available.</p>
+
+              {open && (
+                <div className="border-t border-ink-700/40 px-4 pb-4 pt-3 sm:px-5">
+                  {collapseArtifact ? (
+                    <p className="text-xs leading-relaxed text-ink-500">
+                      Build stage detail is shown below. Toggle{" "}
+                      <span className="font-mono text-ink-300">view raw</span> to
+                      inspect the raw JSON artifact.
+                    </p>
+                  ) : artifact ? (
+                    <pre className="max-h-[400px] overflow-auto rounded-lg border border-ink-700/50 bg-ink-950/80 p-3 font-mono text-xs leading-relaxed text-ink-300">
+                      {JSON.stringify(artifact, null, 2)}
+                    </pre>
+                  ) : status === "not-reached" ? (
+                    <p className="text-xs text-ink-600">Not reached.</p>
+                  ) : status === "fail" ? (
+                    <p className="text-xs text-ink-600">Failed — no artifact written.</p>
+                  ) : (
+                    <p className="text-xs text-ink-600">No artifact available.</p>
+                  )}
+                </div>
               )}
             </Card>
           );
