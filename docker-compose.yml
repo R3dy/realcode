@@ -38,6 +38,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/local/bin/docker:ro
       - ${REALCODE_HOST_MISSION_CONTROL_ROOT:-/home/royce/mission-control}:/mission-control:ro
+      # Ship-persistence (issue #19): the engine writes shipped net-new projects
+      # to PROJECTS/<name>/repo so subsequent [target: <name>] change-flow runs
+      # can find + extend them. The parent /mission-control mount is read-only
+      # (config/docs); this overlay mount makes just PROJECTS/ read-write.
+      - ${REALCODE_HOST_MISSION_CONTROL_ROOT:-/home/royce/mission-control}/PROJECTS:/mission-control/PROJECTS:rw
       - ${REALCODE_HOST_OPENCODE_CONFIG_DIR:-/home/royce/.config/opencode}:/root/.config/opencode:ro
     depends_on:
       phoenix:

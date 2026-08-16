@@ -10,6 +10,78 @@ import { classifyIntent, resolveLiveWorkspace, listAvailableProjects } from "./c
 const MISSION_CONTROL_ROOT = process.env.MISSION_CONTROL_ROOT || "/home/royce/mission-control";
 const TARGET_TAG_RE = /\[target:\s*([A-Za-z0-9_.-]+)\s*\]/i;
 
+/**
+ * Directories excluded when persisting a shipped workspace to
+ * PROJECTS/<name>/repo. Mirrors the COPY_EXCLUDE_DIRS used by
+ * seedWorkspaceFromProject (inverted purpose: we don't want to copy the
+ * ephemeral run metadata / node caches into the durable project repo).
+ */
+const PERSIST_EXCLUDE_DIRS = new Set([".realcode-data", "node_modules", ".git", "data", ".next", "coverage", "dist"]);
+
+/**
+ * Extract a filesystem-safe project name from the frame stage's PROJECT.md.
+ * The first `# <name>` heading is the canonical project name (see
+ * TEMPLATES/project.md). Falls back to null when no heading is found.
+ */
+function extractProjectNameFromFrame(runId: string, storage: Storage): string | null {
+  try {
+    const raw = storage.read(`runs/${runId}/frame.json`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { artifact?: { project_md?: string } };
+    const md = parsed.artifact?.project_md ?? "";
+    // First "# <name>" heading — strip leading '#' + whitespace + any backticks
+    const m = md.match(/^#\s+(.+)$/m);
+    if (!m) return null;
+    const name = m[1].trim().replace(/[`*]/g, "");
+    // Sanitize to a filesystem-safe directory name (lowercase, hyphenated)
+    const safe = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+    return safe || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist a shipped net-new project's workspace to
+ * MISSION_CONTROL_ROOT/PROJECTS/<name>/repo so subsequent
+ * `[target: <name>]` change-flow runs can find + modify it.
+ * Only runs for the ship stage reaching `shipped`. Idempotent: if the
+ * target dir already exists (re-shipping an existing project), it is
+ * overwritten. Best-effort — a persistence failure is logged but does
+ * NOT fail the run (the ship stage already passed).
+ */
+function persistShippedProject(runId: string, workspacePath: string, storage: Storage): void {
+  const projectName = extractProjectNameFromFrame(runId, storage);
+  if (!projectName) {
+    console.warn(`[dispatcher] ship-persist: could not extract project name from frame.json for run ${runId} — skipping persistence`);
+    return;
+  }
+  const targetRepo = path.join(MISSION_CONTROL_ROOT, "PROJECTS", projectName, "repo");
+  try {
+    fs.mkdirSync(path.dirname(targetRepo), { recursive: true });
+    // If the target already exists, remove it first (re-ship overwrites)
+    if (fs.existsSync(targetRepo)) {
+      fs.rmSync(targetRepo, { recursive: true, force: true });
+    }
+    fs.cpSync(workspacePath, targetRepo, {
+      recursive: true,
+      filter: (_src, dest) => {
+        const base = path.basename(dest);
+        // Exclude ephemeral run metadata + caches. dest is the target path;
+        // the first segment after the workspace root is the top-level dir name.
+        if (PERSIST_EXCLUDE_DIRS.has(base) && base !== path.basename(workspacePath)) return false;
+        return true;
+      },
+    });
+    console.log(`[dispatcher] ship-persist: persisted shipped project "${projectName}" to ${targetRepo}`);
+  } catch (err) {
+    // Best-effort: the ship stage already passed; a persistence failure does
+    // not retroactively fail the run. Log so the operator can manually recover.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[dispatcher] ship-persist: failed to persist project "${projectName}" to ${targetRepo}: ${msg}`);
+  }
+}
+
 interface TargetParseResult {
   cleanIdea: string;
   targetProject: string | null;
@@ -384,6 +456,23 @@ export class Engine {
         this.queue.release(item.id, newStatus);
         this.setRunStatus(run, newStatus);
         endSpan(stageSpan, true);
+
+        // ─── Ship-stage persistence (ADR: net-new → durable project) ─────
+        // When the ship stage reaches `shipped`, copy the workspace to
+        // PROJECTS/<name>/repo so a subsequent `[target: <name>]` change
+        // run can find + modify the just-built project. Best-effort: a
+        // failure here is logged but does not retroactively fail the ship
+        // (the stage already passed + the artifact is stored). Only fires
+        // for the full (new_project) flow — the agile change flow mutates
+        // the live repo directly and never reaches the ship stage.
+        if (stage.id === "ship" && newStatus === "shipped") {
+          try {
+            persistShippedProject(item.run_id, run.workspace_path, this.storage);
+          } catch (err) {
+            console.warn(`[dispatcher] ship-persist threw: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
         dispatched++;
 
         if (control.run_mode === "step") {
