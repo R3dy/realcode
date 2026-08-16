@@ -6,6 +6,23 @@
 >
 > **Next action, in order:**
 >
+> **Issue #19 COMPLETE (2026-08-16, session 28) — realcode works end-to-end via the web UI:**
+> - 8 commits pushed (56ead22 through 4e6bb01) fixing 5 root-cause bugs + ship-persistence + UI stage-collapse.
+> - **All 3 scenarios verified from the WEB UI (Playwright + chromium, PASS):**
+>   - Scenario 1 (net-new project, full flow): run_51d4a52f SHIPPED — all 6 stages, 4 stories, $0.197, 8 traceable docker containers.
+>   - Scenario 2 (add feature to existing project, agile change): run_182a90d0 SHIPPED — conductor `classify_change` (deterministic), single change container, committed `d3e5afa Add /version endpoint` to realmemory. $0.043. UI shows only conductor + change.
+>   - Scenario 3 (fix in existing project, agile change): run_f611b509 SHIPPED — committed `33076bf Add /health endpoint` to realmemory. $0.054.
+> - **Ship-persistence** (bb4fa50): ship stage copies workspace to `PROJECTS/<name>/repo` (name from frame.json). docker-compose overlays PROJECTS/ as rw. Smoke-tested.
+> - **UI stage-collapse** (7feda93+134c3f3+4e6bb01): agile runs show only conductor + change; 6 build-flow stages hidden.
+> - 271/271 tests pass. tsc clean. Engine + dashboard rebuilt + restarted.
+> - Issue #19: https://github.com/R3dy/realcode/issues/19
+>
+> **What's next:**
+> 1. Close issue #19 (3 scenarios pass from the web UI; vision met).
+> 2. (Optional) glm-5.2 spec agent generates multi-file projects with test-race conditions (parallel vitest). Future: instruct agents to use `pool: 'forks'` to avoid the race.
+> 3. (Optional) Add `/runs` index route (board lives at `/`).
+> 4. After closing #19: spawn Cartographer to refresh intent layer.
+>
 > **Issue #17 SHIPPED (2026-08-15, session 27) — realcode wraps anymake instead of reimplementing it:**
 > - Royce asked: "use anymake agile to figure out how this project has shifted so far off course. its supposed to be a wrapper for anymake." The anymake-agile pipeline ran the full flow: Cartographer (intent layer refresh) → Solution Architect (development plan) → 3 Plan Review rounds (NEEDS CHANGES → NEEDS CHANGES → APPROVED) → direct build → Validator → runtime smoke proof.
 > - Root cause: ADR-006/INV-7 forbade agents from reading anymake docs, forcing every agent spec to inline frozen copies of anymake's template formats. The anymake templates were always accessible in the sandbox at the opencode cache path (`/root/.cache/opencode/packages/anymake@.../`) — container logs proved agents already found and read them, but wasted context searching because the specs forbade it and didn't tell them where to look.
@@ -310,10 +327,10 @@
 
 ---
 
-**Last updated:** 2026-08-15 (session 27 — issue #17: realcode wraps anymake, ADR-012)
+**Last updated:** 2026-08-16 (session 28 — issue #19 complete: 8 commits, 3 scenarios ship via web UI)
 **Updated by:** Claude (anymake-agile: Cartographer → Architect → 3 review rounds → build → Validator → smoke proof)
 **Current phase:** Phase 5 -- Launch (issue #17 design-drift correction shipped, PR #18 awaiting Royce review)
-**Current step:** Royce to review + merge PR #18. Then: test with a real run exercising cache-path delegation.
+**Current step:** Issue #19 complete. Close #19, then optional follow-ups.
 **project_type:** agentic-harness
 **autonomous_mode:** true
 
