@@ -137,12 +137,11 @@
           },
           "required": [
             "epics_md",
-            "backlog_md",
-            "dependency_graph",
             "story_count",
             "stories"
           ],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "backlog_md + dependency_graph are optional: the spec agent (glm-5.2) unreliably drops these documentation-only markdown fields while reliably emitting epics_md + the structured stories array (the only field the build loop consumes — see src/engine/build-loop.ts). Making them optional prevents spec-stage validation failures on otherwise-valid artifacts (4+ historical runs failed at spec for this exact reason). They are still validated when present."
         }
       },
       "required": [

@@ -59,11 +59,30 @@ export function listAvailableProjects(): string[] {
  * Hybrid approach: deterministic project-name matching first, LLM fallback
  * for ambiguous requests. If the LLM is unavailable, defaults to "new".
  */
-export async function classifyIntent(idea: string): Promise<ClassificationResult> {
+export async function classifyIntent(
+  idea: string,
+  preResolvedTarget?: string,
+): Promise<ClassificationResult> {
   const availableProjects = listAvailableProjects();
   const cleanIdea = idea.replace(TARGET_TAG_RE, "").replace(/\s{2,}/g, " ").trim();
 
-  // 1. Check for [target: <project>] tag
+  // 0. Honor a pre-resolved target (the dashboard already parsed the [target: X]
+  //    tag deterministically and forwarded it in the work-item payload). This
+  //    avoids re-parsing an already-stripped idea and skips the LLM entirely —
+  //    the deterministic path is instant, free, and never 400s.
+  if (preResolvedTarget && availableProjects.includes(preResolvedTarget)) {
+    return {
+      intent: "change",
+      target_project: preResolvedTarget,
+      flow_type: "agile",
+      clean_idea: cleanIdea,
+      reasoning: `Pre-resolved target [target: ${preResolvedTarget}] from dashboard payload — classified as change to ${preResolvedTarget} (no LLM call).`,
+      available_projects: availableProjects,
+      token_usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 },
+    };
+  }
+
+  // 1. Check for [target: <project>] tag (defensive — for non-dashboard callers)
   const tagMatch = idea.match(TARGET_TAG_RE);
   if (tagMatch) {
     const target = tagMatch[1].trim();
@@ -111,6 +130,12 @@ export async function classifyIntent(idea: string): Promise<ClassificationResult
   }
 
   const model = process.env.ANYMAKE_MODEL_TIER3 || process.env.ANYMAKE_MODEL_TIER1 || "openrouter/z-ai/glm-5.2";
+  // OpenRouter model IDs are `provider/model` (e.g. `z-ai/glm-5.2`). The
+  // opencode.json config uses an `openrouter/` prefix that opencode strips
+  // internally before calling the API, but this direct `fetch` does not —
+  // sending `openrouter/z-ai/glm-5.2` returns HTTP 400 "not a valid model
+  // ID". Strip the prefix so the direct conductor call resolves the model.
+  const openrouterModel = model.replace(/^openrouter\//, "");
 
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -120,7 +145,7 @@ export async function classifyIntent(idea: string): Promise<ClassificationResult
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model,
+        model: openrouterModel,
         messages: [
           {
             role: "system",
@@ -138,7 +163,7 @@ export async function classifyIntent(idea: string): Promise<ClassificationResult
         ],
         response_format: { type: "json_object" },
         temperature: 0,
-        max_tokens: 200,
+        max_tokens: 1024,
       }),
     });
 
@@ -147,13 +172,21 @@ export async function classifyIntent(idea: string): Promise<ClassificationResult
     }
 
     const data = await response.json() as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: string; reasoning?: string } }>;
       usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
     };
-    const content = data.choices?.[0]?.message?.content;
+    // glm-5.2 (and other reasoning models) may return `content: null` with the
+    // answer in `reasoning` when the token budget is consumed by thinking. Try
+    // `content` first, then fall back to `reasoning`; if neither carries JSON,
+    // treat it as a classification failure (defaults to "new" — safe for
+    // genuinely net-new requests, which is the only path that reaches the LLM).
+    const content = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning;
     if (!content) throw new Error("No content in LLM response");
 
-    const parsed = JSON.parse(content) as {
+    // The model may wrap JSON in prose or backticks; extract the first {...} block.
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : content;
+    const parsed = JSON.parse(jsonStr) as {
       intent: string;
       target_project: string | null;
       reasoning: string;
@@ -169,7 +202,7 @@ export async function classifyIntent(idea: string): Promise<ClassificationResult
     const flowType = intent === "change" && targetProject ? "agile" : "full";
 
     const usage = data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-    const estimatedCostUsd = estimateCost(usage.total_tokens, model);
+    const estimatedCostUsd = estimateCost(usage.total_tokens, openrouterModel);
 
     return {
       intent: flowType === "agile" ? "change" : "new",

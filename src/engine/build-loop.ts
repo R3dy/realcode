@@ -425,6 +425,25 @@ export class BuildLoopRunner implements StageRunner {
       // Validator result mapping (§4.2 table)
       const validatorArtifact = validatorResult.artifact as { verdict?: string };
       if (validatorResult.output_status === "escalate") {
+        // A validator that produced ZERO tokens almost always means the sandbox
+        // container failed to spawn/run the opencode process (docker resource
+        // contention, transient crash, image hiccup) — NOT a real escalation
+        // verdict. Treating a flaky-spawn as an immediate run-kill makes the
+        // whole build loop fragile: one 0-token validator aborts every
+        // remaining story even when the worker succeeded. Retry the story
+        // instead (up to perStoryCeiling, same ceiling as validator "fail"),
+        // and only truly escalate when the validator actually RAN (tokens > 0)
+        // and still escalated — that's a real crash/security/ambiguity verdict.
+        const validatorRan = (validatorResult.token_usage.total_tokens ?? 0) > 0;
+        if (!validatorRan && story.retry_count < perStoryCeiling) {
+          story.retry_count++;
+          story.status = "pending";
+          this.writeBuildState(item.run_id, buildState);
+          console.warn(
+            `[build-loop] story ${story.story_id} validator produced 0 tokens (sandbox spawn flake) — retrying (${story.retry_count}/${perStoryCeiling})`,
+          );
+          continue; // re-dispatch worker + validator for this story
+        }
         story.status = "escalated";
         this.writeBuildState(item.run_id, buildState);
         escalations.push({ story: story.story_id, reason: `story ${story.story_id} validator escalated` });

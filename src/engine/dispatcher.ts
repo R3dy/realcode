@@ -224,7 +224,13 @@ export class Engine {
       if (stage.conductor) {
         try {
           const idea = (item.payload.idea as string) || run.idea;
-          const classification = await classifyIntent(idea);
+          // The dashboard deterministically parses the [target: X] tag and forwards
+          // `target_project` in the work-item payload. Trust it FIRST — the idea
+          // stored on the run has already been stripped of the tag, so re-parsing
+          // the idea in the conductor would miss it and fall to a (fallible) LLM
+          // call. Only invoke the LLM when no target_project was pre-resolved.
+          const preTarget = (item.payload.target_project as string | undefined) || undefined;
+          const classification = await classifyIntent(idea, preTarget);
 
           // Update the run with the classification + workspace path
           run.spent_usd += classification.token_usage.estimated_cost_usd;

@@ -250,7 +250,20 @@ export class AgentStageRunner implements StageRunner {
     currentStageId: string,
     intakePayload: Record<string, unknown>,
   ): Record<string, unknown> {
-    const ctx: Record<string, unknown> = { idea: intakePayload.idea ?? "", workspace: intakePayload.workspace ?? "" };
+    // In docker/sandbox mode the workspace is bind-mounted at /workspace (see
+    // src/sandbox/runner.ts `containerWorkspace`). Agent prompts reference
+    // {workspace} as "the target repo root" and the validator READS files at
+    // that literal path. The engine-internal path (e.g. /data/workspaces/<id>)
+    // only exists in the ENGINE container — inside a sandbox it is invisible,
+    // so a validator that does `Read /data/workspaces/<id>/go.mod` sees nothing
+    // and escalates with a false "workspace empty" crash even though the worker
+    // succeeded (the worker ignores the string and works in its CWD = /workspace).
+    // Fix: point {workspace} at the sandbox-internal mount path when not in
+    // local mode. (Local mode keeps the real path — no mount translation.)
+    const containerWorkspace = this.options.localMode
+      ? (intakePayload.workspace as string | undefined) ?? ""
+      : "/workspace";
+    const ctx: Record<string, unknown> = { idea: intakePayload.idea ?? "", workspace: containerWorkspace };
 
     const stageOrder = this.graph.stages.map((s) => s.id);
     const currentIdx = stageOrder.indexOf(currentStageId);

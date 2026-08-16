@@ -6,7 +6,22 @@
 >
 > **Next action, in order:**
 >
-> **Dashboard mobile-first design audit + fixes SHIPPED (2026-08-14, session 26):**
+> **Issue #17 SHIPPED (2026-08-15, session 27) — realcode wraps anymake instead of reimplementing it:**
+> - Royce asked: "use anymake agile to figure out how this project has shifted so far off course. its supposed to be a wrapper for anymake." The anymake-agile pipeline ran the full flow: Cartographer (intent layer refresh) → Solution Architect (development plan) → 3 Plan Review rounds (NEEDS CHANGES → NEEDS CHANGES → APPROVED) → direct build → Validator → runtime smoke proof.
+> - Root cause: ADR-006/INV-7 forbade agents from reading anymake docs, forcing every agent spec to inline frozen copies of anymake's template formats. The anymake templates were always accessible in the sandbox at the opencode cache path (`/root/.cache/opencode/packages/anymake@.../`) — container logs proved agents already found and read them, but wasted context searching because the specs forbade it and didn't tell them where to look.
+> - ADR-012: agent specs now point at anymake's real template files in the opencode cache path. The engine-orchestrated build loop is the sanctioned container-per-subagent model (the reporter's vision: "spawn a fresh container per subagent"). ship.yaml's fast-path is intentional.
+> - 22 files changed: 6 agent specs rewritten (frame, discover, plan, spec, worker, validator), 2 updated (ship, change), build.yaml deleted, ADR-012 + revised INV-7 + resolved D-7, stage-graph comments, test fixes. 271/271 tests pass. Runtime smoke proof verified.
+> - **PR #18 open — ADR-touching, requires Royce's review before merge.**
+>
+> **What's next:**
+> 1. Royce to review + merge PR #18 (https://github.com/R3dy/realcode/pull/18).
+> 2. After merge: spawn Cartographer to refresh intent layer.
+> 3. Test with a real run that exercises the new cache-path delegation (does the
+>    plan stage produce artifacts that match anymake's current PRD template?).
+> 4. Consider re-adding the Planner role as an engine-orchestrated per-story
+>    container (PARKING_LOT) if over-slicing recurs.
+>
+> **Dashboard mobile-first audit + fixes SHIPPED (2026-08-14, session 26):**
 > - Royce asked for a full mobile-first design audit of the dashboard and to
 >   address everything that didn't follow mobile-first theory. A prior
 >   change-agent pass (commit b4fed98) had only scratched the surface
@@ -295,10 +310,10 @@
 
 ---
 
-**Last updated:** 2026-08-14 (session 26 — dashboard mobile-first design audit + fixes)
-**Updated by:** Claude (mobile-first audit: bottom nav, dedup, touch targets, safe areas)
-**Current phase:** Phase 5 -- Launch (mobile-first dashboard audit shipped)
-**Current step:** Royce to approve commit + push of session 25 + 26 changes. Optional phone-viewport smoke.
+**Last updated:** 2026-08-15 (session 27 — issue #17: realcode wraps anymake, ADR-012)
+**Updated by:** Claude (anymake-agile: Cartographer → Architect → 3 review rounds → build → Validator → smoke proof)
+**Current phase:** Phase 5 -- Launch (issue #17 design-drift correction shipped, PR #18 awaiting Royce review)
+**Current step:** Royce to review + merge PR #18. Then: test with a real run exercising cache-path delegation.
 **project_type:** agentic-harness
 **autonomous_mode:** true
 
