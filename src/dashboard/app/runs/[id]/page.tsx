@@ -162,8 +162,20 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
       ),
   );
 
-  // Build stages array for StageStepper
-  const stepperStages = STAGE_ORDER.map((name) => ({
+  // Build stages array for StageStepper. For agile (change) flow runs, the 6
+  // full-flow stages are "not-reached" — collapse them out of the rail so the
+  // UI shows only conductor + change (the stages that actually ran) instead
+  // of 6 empty "No artifact available" chips.
+  const isAgileFlow = stages["change"] !== undefined && stages["change"] !== "not-reached";
+  const visibleStageOrder = STAGE_ORDER.filter((name) => {
+    const s = stages[name];
+    // Always show stages that ran (pass/fail/running/escalated). For agile
+    // flow, skip "not-reached" stages (the 6 build-flow stages). For full
+    // flow, show everything (change is "not-reached" but harmless in the rail).
+    if (s === "not-reached") return !isAgileFlow;
+    return true;
+  });
+  const stepperStages = visibleStageOrder.map((name) => ({
     name,
     status: (stages[name] === "not-reached" ? "pending" : stages[name]) as StageStatus,
   }));
@@ -281,7 +293,7 @@ export default function RunDetailPage({ params }: { params: { id: string } }) {
           and expanded for the live / failed / build-detail stages. The whole
           header is a tappable target (>=44px) for comfortable touch use. */}
       <div className="space-y-3">
-        {STAGE_ORDER.map((stageName) => {
+        {visibleStageOrder.map((stageName) => {
           const status = stages[stageName];
           const artifact = artifacts[stageName];
           const tone = DETAIL_STATUS_TONE[status];
