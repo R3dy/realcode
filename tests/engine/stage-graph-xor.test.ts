@@ -32,7 +32,7 @@ function writeGraph(dir: string, stages: object[]): string {
 const FRAME_SCHEMA = path.resolve(REPO_ROOT, "schemas/frame.schema.json");
 const BUILD_SCHEMA = path.resolve(REPO_ROOT, "schemas/build.schema.json");
 const FRAME_SPEC = path.resolve(REPO_ROOT, "agent-specs/frame.yaml");
-const BUILD_SPEC = path.resolve(REPO_ROOT, "agent-specs/build.yaml");
+const BUILD_SPEC = path.resolve(REPO_ROOT, "agent-specs/worker.yaml");
 
 // A minimal valid stage that uses agent_spec (the A4.1 pattern).
 function agentSpecStage(id: string): object {
@@ -76,7 +76,7 @@ function innerLoopStage(id: string): object {
     permission_mode: "unattended",
     artifact_schema: BUILD_SCHEMA,
     worker_spec: BUILD_SPEC,
-    validator_spec: BUILD_SPEC,
+    validator_spec: path.resolve(REPO_ROOT, "agent-specs/validator.yaml"),
   };
 }
 
@@ -107,7 +107,7 @@ describe("Stage-graph XOR rule", () => {
     const stage = agentSpecStage("frame");
     (stage as any).inner_loop = "anymake-build-loop";
     (stage as any).worker_spec = BUILD_SPEC;
-    (stage as any).validator_spec = BUILD_SPEC;
+    (stage as any).validator_spec = path.resolve(REPO_ROOT, "agent-specs/validator.yaml");
     const graphPath = writeGraph(tmpDir, [stage]);
     expect(() => loadStageGraph(graphPath)).toThrow(GraphValidationError);
     try {

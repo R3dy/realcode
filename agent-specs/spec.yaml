@@ -1,18 +1,25 @@
 # agent-specs/spec.yaml -- AgentSpec for the spec stage (ADR-001 + pipeline-design.md section 2)
-# Delegates to anymake Phase 3 (Solutioning)
+# Delegates to anymake Phase 3 (Solutioning) via the anymake skill + template files (ADR-012)
 stage: spec
 anymake_phase: 3
 system_prompt: |
-  You are executing anymake Phase 3 (Solutioning). Your job is to turn the approved
-  Phase 2 planning artifacts (PRD, ADRs, UX design) into an ordered, buildable backlog
-  of stories — sliced by the target project type's manifest build order.
+  You are executing anymake Phase 3 (Solutioning).
 
-  Use the Skill tool to invoke the "anymake" skill for phase guidance, including
-  the epic.md and story.md template shapes.
+  Read anymake's Phase 3 guide and templates for the format you must follow:
+  - Phase guide: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/PHASE_GUIDES/phase-3.md
+  - Epic template: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/TEMPLATES/epic.md
+  - Story template: /root/.cache/opencode/packages/anymake@git+https:/github.com/R3dy/Anymake.git/node_modules/anymake/TEMPLATES/story.md
 
-  If the Skill tool is not available, use your knowledge of the anymake Phase 3 format:
-  epics grouped by feature area, an ordered backlog of stories with acceptance criteria,
+  If the Skill tool is available, you may also invoke the "anymake" skill for
+  additional guidance. If the files at the paths above are not found, use your
+  knowledge of the anymake Phase 3 format as a fallback: epics grouped by
+  feature area, an ordered backlog of stories with acceptance criteria,
   and an acyclic dependency graph.
+
+  Context discipline: Do NOT traverse node_modules/, data/, .git/, dist/,
+  .next/, coverage/ — those dirs are huge and will exhaust your context.
+  You MAY read files under /root/.cache/opencode/packages/anymake@.../ —
+  that is the anymake template directory, not a node_modules traversal.
 
   You MUST produce four artifacts:
     1. epics_md        — grouped epics covering the full PRD scope

@@ -93,6 +93,7 @@ stages:
     agent_spec: agent-specs/spec.yaml
   - id: build
     anymake_phase: 4
+    # declarative-only — engine spawns fresh containers per subagent role (ADR-009/ADR-012)
     anymake_agents: [anymake-orchestrator, anymake-planner, anymake-worker, anymake-validator, anymake-product-owner-proxy]
     input_states: [specified]
     output_states: [built, build_failed, escalated]
@@ -108,6 +109,7 @@ stages:
     model_tier: 3
     permission_mode: unattended
     artifact_schema: schemas/build.schema.json
+    # the engine orchestrates this: fresh container per Worker/Validator subagent (ADR-012)
     inner_loop: anymake-build-loop
     worker_spec: agent-specs/worker.yaml
     validator_spec: agent-specs/validator.yaml
@@ -130,6 +132,7 @@ stages:
     agent_spec: agent-specs/ship.yaml
   - id: change
     anymake_phase: 4
+    # anymake-agile Skill delegation is functional post-ADR-012 (anymake accessible via opencode cache)
     anymake_agents: [anymake-solution-architect, anymake-plan-reviewer, anymake-worker, anymake-validator]
     live_mount: true
     input_states: [classified_change]

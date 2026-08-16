@@ -68,8 +68,8 @@ describe("AgentSpec loader", () => {
     expect(spec.permission_mode).toBe("unattended");
   });
 
-  it("loads and validates all 6 agent specs", () => {
-    const stages = ["frame", "discover", "plan", "spec", "build", "ship"];
+  it("loads and validates all 5 agent specs (build.yaml deleted per ADR-012)", () => {
+    const stages = ["frame", "discover", "plan", "spec", "ship"];
     for (const stage of stages) {
       const spec = loadAgentSpec(path.resolve(REPO_ROOT, `agent-specs/${stage}.yaml`));
       expect(spec.stage).toBe(stage);
