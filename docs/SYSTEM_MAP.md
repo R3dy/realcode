@@ -1,7 +1,7 @@
 # realcode -- System Map
 
-**Last mapped:** 2026-08-14 (cartographer refresh, post-session 25 + 26)
-**Code state:** 3862a94 (master)
+**Last mapped:** 2026-08-15 (cartographer refresh, post-merge of PR #18 / issue #17)
+**Code state:** 8456aaa (master)
 
 > Lightweight intent layer built from planning docs + direct code reading.
 > Refreshed by the Cartographer after:
@@ -11,6 +11,9 @@
 >   - issue #11 (live-state visibility system, ADR-011)
 >   - issue #16 / session 25 (conductor + dual-flow architecture, ADR-010)
 >   - session 26 (dashboard mobile-first audit)
+>   - issue #17 / PR #18 (ADR-012: agents delegate to anymake's real templates via cache path;
+>     build.yaml deleted; engine-orchestrated build loop codified; ship fast-path intentional;
+>     D-7 resolved)
 
 ---
 
@@ -71,14 +74,20 @@ src/
   backend/                -- queue (SQLite), run state machine, control doc
   agents/                 -- AgentStageRunner: loads AgentSpec YAML, invokes opencode-in-sandbox per stage
                             runner.fillTemplate() truncates each interpolated value at 8000 chars (ADR-008)
-  agent-specs/            -- 7 YAML specs:
-                              frame / discover / plan / spec / build / ship  (full pipeline)
+  agent-specs/            -- 6 YAML specs (build.yaml deleted by ADR-012; build stage uses
+                            worker_spec/validator_spec per ADR-009):
+                              frame / discover / plan / spec / ship  (full pipeline -- ADR-012:
+                                point agents at anymake's real templates in the opencode cache path
+                                /root/.cache/opencode/packages/anymake@.../ instead of inlining
+                                frozen copies)
                               change  (agile flow -- ADR-010; live-mount, direct edit+test+commit,
-                                       can delegate to anymake-agile Skill for complex changes)
+                                       can delegate to anymake-agile Skill for complex changes -- now
+                                       functional per ADR-012 since anymake is accessible in-sandbox)
                               [worker.yaml + validator.yaml are inner-loop specs, not pipeline stages]
-                            plan.yaml + build.yaml carry CRITICAL context-discipline guards (ADR-006):
-                              the agent must work ONLY from prompt-provided context, must NOT read
-                              node_modules/data/.git/dist/.next/coverage, must NOT search for anymake docs
+                            Traversal guard (ADR-006 -- traversal clause stands, anymake-read prohibition
+                              removed by ADR-012): the agent must NOT traverse node_modules/data/.git/
+                              dist/.next/coverage, with a carve-out for the anymake cache path (passes
+                              through a node_modules dir but is not a traversal)
   sandbox/                -- Docker sandbox runner (realcode-sandbox:latest image, sandbox-net)
   schemas/                -- JSON-Schema per stage artifact (conductor, frame, discover, plan, spec, build, ship, change)
   cli/                    -- `realcode run "..."` CLI entry point

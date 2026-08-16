@@ -1,7 +1,7 @@
 # realcode -- Invariants
 
-**Last updated:** 2026-08-14 (cartographer refresh, post-session 25 + 26)
-**Code state:** 3862a94 (master)
+**Last updated:** 2026-08-15 (cartographer refresh, post-merge of PR #18 / issue #17)
+**Code state:** 8456aaa (master)
 
 ## INV-1: The stage graph is declarative (ADR-002)
 Adding, reordering, or branching a stage is a config change to `stage-graph.yaml`, never engine code. The conductor + change stages (ADR-010) were added as YAML entries with `conductor`/`live_mount` flags -- no engine branching code.
